@@ -8,7 +8,10 @@ export const protectRoute = async (req, res, next) => {
     if (!accessToken) {
       return res
         .status(401)
-        .json({ message: "Unauthorized - No access token provided" });
+        .json({ 
+          success: false,
+          error: "Unauthorized - No access token provided" 
+        });
     }
 
     try {
@@ -16,7 +19,10 @@ export const protectRoute = async (req, res, next) => {
       const user = await User.findById(decoded.userId).select("-password");
 
       if (!user) {
-        return res.status(401).json({ message: "User not found" });
+        return res.status(401).json({ 
+          success: false,
+          error: "User not found" 
+        });
       }
 
       req.user = user;
@@ -26,7 +32,10 @@ export const protectRoute = async (req, res, next) => {
       if (error.name === "TokenExpiredError") {
         return res
           .status(401)
-          .json({ message: "Unauthorized - Access token expired" });
+          .json({ 
+            success: false,
+            error: "Unauthorized - Access token expired" 
+          });
       }
       throw error;
     }
@@ -34,7 +43,10 @@ export const protectRoute = async (req, res, next) => {
     console.log("Error in protectRoute middleware", error.message);
     return res
       .status(401)
-      .json({ message: "Unauthorized - Invalid access token" });
+      .json({ 
+        success: false,
+        error: "Unauthorized - Invalid access token" 
+      });
   }
 };
 
@@ -42,7 +54,10 @@ export const adminRoute = (req, res, next) => {
   if (req.user && req.user.role === "admin") {
     next();
   } else {
-    return res.status(403).json({ message: "Access denied - Admin only" });
+    return res.status(403).json({ 
+      success: false,
+      error: "Access denied - Admin only" 
+    });
   }
 };
 
@@ -50,14 +65,9 @@ export const sellerRoute = (req, res, next) => {
   if (req.user && (req.user.role === "seller" || req.user.role === "admin")) {
     next();
   } else {
-    return res.status(403).json({ message: "Access denied - Seller only" });
-  }
-};
-
-export const sellerOrAdminRoute = (req, res, next) => {
-  if (req.user && (req.user.role === "seller" || req.user.role === "admin")) {
-    next();
-  } else {
-    return res.status(403).json({ message: "Access denied - Seller or Admin only" });
+    return res.status(403).json({ 
+      success: false,
+      error: "Access denied - Seller privileges required" 
+    });
   }
 };

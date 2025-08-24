@@ -1,353 +1,335 @@
-import redis from "../lib/redis.js";
-import cloudinary from "../lib/cloudinary.js";
 import Product from "../models/product.model.js";
 import ProductType from "../models/productType.model.js";
-export const getAllProducts = async (req, res) => {
-  try {
-    const { page = 1, limit = 10, category, brand, minPrice, maxPrice, sort } = req.query;
-    
-    let query = {};
-    
-    // Filter by category
-    if (category) {
-      query.category = category;
-    }
-    
-    // Filter by brand
-    if (brand) {
-      query.brand = { $regex: brand, $options: 'i' };
-    }
-    
-    // Filter by price range
-    if (minPrice || maxPrice) {
-      query.price = {};
-      if (minPrice) query.price.$gte = Number(minPrice);
-      if (maxPrice) query.price.$lte = Number(maxPrice);
-    }
-    
-    // Sort options
-    let sortOption = {};
-    if (sort === 'price_asc') sortOption.price = 1;
-    else if (sort === 'price_desc') sortOption.price = -1;
-    else if (sort === 'newest') sortOption.createdAt = -1;
-    else if (sort === 'rating') sortOption.ratings = -1;
-    else sortOption.createdAt = -1;
-    
-    const products = await Product.find(query)
-      .populate('category', 'name')
-      .sort(sortOption)
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-    
-    const total = await Product.countDocuments(query);
-    
-    res.json({
-      products,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
-    });
-  } catch (error) {
-    console.log("Error in getAllProducts controller", error.message);
-    res.status(500).json({ message: error.message });
-  }
-};
-
-export const getFeaturedProducts = async (req, res) => {
-  try {
-    let featuredProducts = await redis.get("featured_products");
-
-    if (featuredProducts) return res.json(JSON.parse(featuredProducts));
-
-    // Lấy sản phẩm nổi bật
-    featuredProducts = await Product.find({ isFeatured: true })
-      .populate('category', 'name')
-      .lean();
-
-    if (!featuredProducts || featuredProducts.length === 0) {
-      return res.status(404).json({ message: "Không tìm thấy sản phẩm nổi bật" });
-    }
-
-    await redis.set("featured_products", JSON.stringify(featuredProducts));
-
-    return res.json(featuredProducts);
-  } catch (error) {
-    console.log("Error in getFeaturedProducts controller", error.message);
-    res.status(500).json({ message: error.message });
-  }
-};
+import cloudinary from "../lib/cloudinary.js";
+import {
+  successResponse,
+  errorResponse,
+  validationError,
+  notFoundError,
+  paginatedResponse,
+} from "../utils/response.js";
 
 export const createProduct = async (req, res) => {
   try {
-    const { name, price, category, description, isFeatured, image } = req.body;
+    const { name, description, price, category, shop, countInStock, image } =
+      req.body;
 
-    let cloudinaryResponse = null;
-
-    if (image) {
-      cloudinaryResponse = await cloudinary.uploader.upload(image, {
-        folder: "products",
-      });
-    }
-
-    const product = await Product.create({
-      name,
-      price,
+    // Check for duplicate product (name, category, shop combination)
+    const existingProduct = await Product.findOne({
+      name: { $regex: new RegExp(`^${name}$`, "i") },
       category,
-      description,
-      brand: req.body.brand || "Unknown",
-      countInStock: req.body.countInStock || 0,
-      image: cloudinaryResponse?.secure_url
-        ? cloudinaryResponse.secure_url
-        : null,
-      seller: req.user.role === "seller" ? req.user._id : req.body.seller || req.user._id,
+      shop,
+      isActive: true,
     });
 
-    await product.populate('seller', 'name email');
-    await product.populate('category', 'name');
+    if (existingProduct) {
+      return validationError(
+        res,
+        "Product with this name and category already exists in your shop"
+      );
+    }
 
-    res.status(201).json(product);
+    const product = new Product({
+      name,
+      description,
+      price,
+      category,
+      shop,
+      countInStock,
+      image,
+    });
+
+    const savedProduct = await product.save();
+    return successResponse(
+      res,
+      savedProduct,
+      "Product created successfully",
+      201
+    );
   } catch (error) {
-    console.log("Error in createProduct controller", error.message);
-    res.status(500).json({ message: error.message });
+    return errorResponse(res, error);
+  }
+};
+
+export const getAllProducts = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const products = await Product.find({ isActive: true })
+      .populate("category", "name")
+      .populate("shop", "name")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await Product.countDocuments({ isActive: true });
+
+    const pagination = {
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalProducts: total,
+      limit,
+    };
+
+    return paginatedResponse(res, products, pagination);
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+};
+
+export const getProductById = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id)
+      .populate("category", "name")
+      .populate("shop", "name");
+
+    if (!product) {
+      return notFoundError(res, "Product not found");
+    }
+
+    return successResponse(res, product);
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+};
+
+export const updateProduct = async (req, res) => {
+  try {
+    const { name, description, price, category, countInStock, image } =
+      req.body;
+
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return notFoundError(res, "Product not found");
+    }
+
+    // Check for duplicate product when updating name or category
+    if (name || category) {
+      const existingProduct = await Product.findOne({
+        name: { $regex: new RegExp(`^${name || product.name}$`, "i") },
+        category: category || product.category,
+        shop: product.shop,
+        isActive: true,
+        _id: { $ne: req.params.id },
+      });
+
+      if (existingProduct) {
+        return validationError(
+          res,
+          "Product with this name and category already exists in your shop"
+        );
+      }
+    }
+
+    const updatedProduct = await Product.findByIdAndUpdate(
+      req.params.id,
+      {
+        name,
+        description,
+        price,
+        category,
+        countInStock,
+        image,
+      },
+      { new: true }
+    );
+
+    return successResponse(res, updatedProduct, "Product updated successfully");
+  } catch (error) {
+    return errorResponse(res, error);
   }
 };
 
 export const deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-
     if (!product) {
-      return res.status(404).json({ message: "Product not found" });
+      return notFoundError(res, "Product not found");
     }
 
-    // Kiểm tra quyền: chỉ admin hoặc seller sở hữu sản phẩm mới được xóa
-    if (req.user.role !== "admin" && product.seller.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Access denied - You can only delete your own products" });
+    // Check if product has active orders
+    const Order = (await import("../models/order.model.js")).default;
+    const activeOrders = await Order.countDocuments({
+      "items.product": req.params.id,
+      status: { $in: ["pending", "processing", "shipped"] },
+    });
+
+    if (activeOrders > 0) {
+      return validationError(
+        res,
+        `Cannot delete product. There are ${activeOrders} active orders containing this product.`
+      );
     }
 
-    if (product.image) {
-      const publicId = product.image.split("/").pop().split(".")[0];
-      try {
-        await cloudinary.uploader.destroy(`products/${publicId}`);
-        console.log("deleted image from cloudinary");
-      } catch (error) {
-        console.log("error deleting image from cloudinary", error);
-      }
-    }
-
-    await Product.findByIdAndDelete(req.params.id);
-
-    res.json({ message: "Product deleted successfully" });
+    await Product.findByIdAndUpdate(req.params.id, { isActive: false });
+    return successResponse(res, null, "Product deleted successfully");
   } catch (error) {
-    console.log("Error in deleteProduct controller", error.message);
-    res.status(500).json({ message: "Server error", error: error.message });
+    return errorResponse(res, error);
   }
 };
 
-export const getRecommendedProducts = async (req, res) => {
+export const searchProducts = async (req, res) => {
   try {
-    const products = await Product.aggregate([
-      {
-        $sample: { size: 4 },
-      },
-      {
-        $project: {
-          _id: 1,
-          name: 1,
-          description: 1,
-          image: 1,
-          price: 1,
-        },
-      },
-    ]);
+    const { q, category, minPrice, maxPrice, sort } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-    res.json(products);
+    let query = { isActive: true };
+
+    if (q) {
+      query.$or = [
+        { name: { $regex: q, $options: "i" } },
+        { description: { $regex: q, $options: "i" } },
+      ];
+    }
+
+    if (category) {
+      query.category = category;
+    }
+
+    if (minPrice || maxPrice) {
+      query.price = {};
+      if (minPrice) query.price.$gte = parseFloat(minPrice);
+      if (maxPrice) query.price.$lte = parseFloat(maxPrice);
+    }
+
+    let sortOption = { createdAt: -1 };
+    if (sort === "price_asc") sortOption = { price: 1 };
+    if (sort === "price_desc") sortOption = { price: -1 };
+    if (sort === "name_asc") sortOption = { name: 1 };
+
+    const products = await Product.find(query)
+      .populate("category", "name")
+      .populate("shop", "name")
+      .skip(skip)
+      .limit(limit)
+      .sort(sortOption);
+
+    const total = await Product.countDocuments(query);
+
+    const pagination = {
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalProducts: total,
+      limit,
+    };
+
+    return paginatedResponse(res, products, pagination);
   } catch (error) {
-    console.log("Error in getRecommendedProducts controller", error.message);
-    res.status(500).json({ message: "Server error", error: error.message });
+    return errorResponse(res, error);
   }
 };
 
 export const getProductsByCategory = async (req, res) => {
-  const { category } = req.params;
   try {
-    const products = await Product.find({ category });
-    res.json({ products });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const products = await Product.find({
+      category: req.params.categoryId,
+      isActive: true,
+    })
+      .populate("category", "name")
+      .populate("shop", "name")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await Product.countDocuments({
+      category: req.params.categoryId,
+      isActive: true,
+    });
+
+    const pagination = {
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalProducts: total,
+      limit,
+    };
+
+    return paginatedResponse(res, products, pagination);
   } catch (error) {
-    console.log("Error in getProductsByCategory controller", error.message);
-    res.status(500).json({ message: "Server error", error: error.message });
+    return errorResponse(res, error);
   }
 };
 
-export const toggleFeaturedProduct = async (req, res) => {
+export const getProductsByShop = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const products = await Product.find({
+      shop: req.params.shopId,
+      isActive: true,
+    })
+      .populate("category", "name")
+      .populate("shop", "name")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await Product.countDocuments({
+      shop: req.params.shopId,
+      isActive: true,
+    });
+
+    const pagination = {
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalProducts: total,
+      limit,
+    };
+
+    return paginatedResponse(res, products, pagination);
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+};
+
+export const uploadProductImages = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-    if (product) {
-      // Thay đổi logic để toggle trạng thái nổi bật
-      product.isFeatured = !product.isFeatured;
-      const updatedProduct = await product.save();
-      await updateFeaturedProductsCache();
-      res.json(updatedProduct);
-    } else {
-      res.status(404).json({ message: "Sản phẩm không tồn tại" });
-    }
-  } catch (error) {
-    console.log("Error in toggleFeaturedProduct controller", error.message);
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-};
-
-// Lấy sản phẩm theo ID
-export const getProductById = async (req, res) => {
-  try {
-    const product = await Product.findById(req.params.id)
-      .populate('category', 'name description')
-      .populate('reviews', 'rating comment user createdAt')
-      .populate({
-        path: 'reviews',
-        populate: {
-          path: 'user',
-          select: 'name'
-        }
-      });
-
     if (!product) {
-      return res.status(404).json({ message: "Sản phẩm không tồn tại" });
+      return notFoundError(res, "Product not found");
     }
 
-    res.json(product);
+    if (!req.file) {
+      return validationError(res, "No image file provided");
+    }
+
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "products",
+      width: 500,
+      crop: "scale",
+    });
+
+    product.image = result.secure_url;
+    await product.save();
+
+    return successResponse(res, product, "Image uploaded successfully");
   } catch (error) {
-    console.log("Error in getProductById controller", error.message);
-    res.status(500).json({ message: error.message });
+    return errorResponse(res, error);
   }
 };
 
-// Cập nhật sản phẩm
-export const updateProduct = async (req, res) => {
+export const deleteProductImage = async (req, res) => {
   try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    const product = await Product.findById(id);
+    const product = await Product.findById(req.params.id);
     if (!product) {
-      return res.status(404).json({ message: "Sản phẩm không tồn tại" });
+      return notFoundError(res, "Product not found");
     }
 
-    // Kiểm tra quyền: chỉ admin hoặc seller sở hữu sản phẩm mới được cập nhật
-    if (req.user.role !== "admin" && product.seller.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Access denied - You can only update your own products" });
-    }
+    // Reset to default image or remove image
+    product.image = "";
+    await product.save();
 
-    // Xử lý upload ảnh nếu có
-    if (updateData.image && updateData.image.startsWith('data:')) {
-      const cloudinaryResponse = await cloudinary.uploader.upload(updateData.image, {
-        folder: "products",
-      });
-      updateData.image = cloudinaryResponse.secure_url;
-    }
-
-    const updatedProduct = await Product.findByIdAndUpdate(
-      id,
-      updateData,
-      { new: true, runValidators: true }
-    ).populate('category', 'name').populate('seller', 'name email');
-
-    res.json(updatedProduct);
+    return successResponse(res, product, "Image deleted successfully");
   } catch (error) {
-    console.log("Error in updateProduct controller", error.message);
-    res.status(500).json({ message: error.message });
+    return errorResponse(res, error);
   }
 };
-
-// Lấy sản phẩm của seller
-export const getSellerProducts = async (req, res) => {
-  try {
-    const { page = 1, limit = 10, status } = req.query;
-    const sellerId = req.user._id;
-
-    let query = { seller: sellerId };
-    
-    // Filter theo trạng thái tồn kho
-    if (status === "inStock") {
-      query.countInStock = { $gt: 0 };
-    } else if (status === "outOfStock") {
-      query.countInStock = 0;
-    }
-
-    const products = await Product.find(query)
-      .populate('category', 'name')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const total = await Product.countDocuments(query);
-
-    res.json({
-      products,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
-    });
-  } catch (error) {
-    console.log("Error in getSellerProducts controller", error.message);
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// Thống kê sản phẩm của seller
-export const getSellerStats = async (req, res) => {
-  try {
-    const sellerId = req.user._id;
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfYear = new Date(today.getFullYear(), 0, 1);
-
-    // Tổng sản phẩm
-    const totalProducts = await Product.countDocuments({ seller: sellerId });
-    const inStockProducts = await Product.countDocuments({ 
-      seller: sellerId, 
-      countInStock: { $gt: 0 } 
-    });
-    const outOfStockProducts = await Product.countDocuments({ 
-      seller: sellerId, 
-      countInStock: 0 
-    });
-
-    // Sản phẩm được tạo trong tháng/năm
-    const productsThisMonth = await Product.countDocuments({
-      seller: sellerId,
-      createdAt: { $gte: startOfMonth },
-    });
-    const productsThisYear = await Product.countDocuments({
-      seller: sellerId,
-      createdAt: { $gte: startOfYear },
-    });
-
-    // Tổng giá trị tồn kho
-    const inventoryValue = await Product.aggregate([
-      { $match: { seller: sellerId } },
-      { $group: { _id: null, total: { $sum: { $multiply: ["$price", "$countInStock"] } } } },
-    ]);
-
-    res.json({
-      totalProducts,
-      inStockProducts,
-      outOfStockProducts,
-      productsThisMonth,
-      productsThisYear,
-      inventoryValue: inventoryValue[0]?.total || 0,
-    });
-  } catch (error) {
-    console.log("Error in getSellerStats controller", error.message);
-    res.status(500).json({ message: error.message });
-  }
-};
-
-async function updateFeaturedProductsCache() {
-  try {
-    const featuredProducts = await Product.find({ isFeatured: true }).lean();
-    await redis.set("featured_products", JSON.stringify(featuredProducts));
-  } catch (error) {
-    console.log("error in update cache function");
-  }
-}

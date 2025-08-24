@@ -11,6 +11,11 @@ const productTypeSchema = new mongoose.Schema({
   description: {
     type: String,
   },
+
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
 });
 
 export default mongoose.model("ProductType", productTypeSchema);

@@ -22,21 +22,16 @@ const productSchema = new mongoose.Schema(
       required: [true, "Product image is required"],
     },
 
-    brand: {
-      type: String,
-      required: [true, "Product brand is required"],
-    },
-
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ProductType",
       required: [true, "Product category is required"],
     },
 
-    seller: {
+    shop: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "Product seller is required"],
+      ref: "Shop",
+      required: [true, "Product shop is required"],
     },
 
     countInStock: {
@@ -65,9 +60,9 @@ const productSchema = new mongoose.Schema(
       },
     ],
 
-    isFeatured: {
+    isActive: {
       type: Boolean,
-      default: false,
+      default: true,
     },
   },
   { timestamps: true }

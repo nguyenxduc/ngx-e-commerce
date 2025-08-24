@@ -1,33 +1,43 @@
 import express from "express";
 import {
   createProduct,
-  deleteProduct,
   getAllProducts,
-  getFeaturedProducts,
+  getProductById,
+  updateProduct,
+  deleteProduct,
+  searchProducts,
   getProductsByCategory,
-  getRecommendedProducts,
-  toggleFeaturedProduct,
-  getSellerProducts,
-  getSellerStats,
+  getProductsByShop,
+  uploadProductImages,
+  deleteProductImage,
 } from "../controllers/product.controller.js";
-import { adminRoute, protectRoute, sellerOrAdminRoute } from "../middleware/auth.middleware.js";
+import { protectRoute, adminRoute } from "../middleware/auth.middleware.js";
+import { productOwnerRoute } from "../middleware/shopOwner.middleware.js";
 
 const router = express.Router();
 
+// Public routes
 router.get("/", getAllProducts);
-router.get("/featured", getFeaturedProducts);
-router.get("/category/:category", getProductsByCategory);
-router.get("/recommendations", getRecommendedProducts);
+router.get("/search", searchProducts);
+router.get("/category/:categoryId", getProductsByCategory);
+router.get("/shop/:shopId", getProductsByShop);
 router.get("/:id", getProductById);
 
-// Seller routes
-router.get("/seller/products", protectRoute, sellerOrAdminRoute, getSellerProducts);
-router.get("/seller/stats", protectRoute, sellerOrAdminRoute, getSellerStats);
-
-// Admin/Seller routes
-router.post("/", protectRoute, sellerOrAdminRoute, createProduct);
-router.put("/:id", protectRoute, sellerOrAdminRoute, updateProduct);
-router.patch("/:id", protectRoute, adminRoute, toggleFeaturedProduct);
-router.delete("/:id", protectRoute, sellerOrAdminRoute, deleteProduct);
+// Protected routes - require authentication and product ownership
+router.post("/", protectRoute, createProduct);
+router.put("/:id", protectRoute, productOwnerRoute, updateProduct);
+router.delete("/:id", protectRoute, productOwnerRoute, deleteProduct);
+router.post(
+  "/:id/images",
+  protectRoute,
+  productOwnerRoute,
+  uploadProductImages
+);
+router.delete(
+  "/:id/images/:imageId",
+  protectRoute,
+  productOwnerRoute,
+  deleteProductImage
+);
 
 export default router;

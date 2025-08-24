@@ -1,256 +1,511 @@
-import Order from "../models/order.model.js";
+import User from "../models/user.model.js";
+import Shop from "../models/shop.model.js";
 import Product from "../models/product.model.js";
+import Order from "../models/order.model.js";
 import Review from "../models/review.model.js";
 
-// Lấy đơn hàng của seller
-export const getSellerOrders = async (req, res) => {
+export const getSellerProfile = async (req, res) => {
   try {
-    const sellerId = req.user._id;
-    const { page = 1, limit = 10, status } = req.query;
-
-    // Lấy tất cả sản phẩm của seller
-    const sellerProducts = await Product.find({ seller: sellerId }).select(
-      "_id"
-    );
-    const productIds = sellerProducts.map((product) => product._id);
-
-    let query = {
-      "orderItems.product": { $in: productIds },
-    };
-
-    // Filter theo trạng thái
-    if (status === "paid") {
-      query.isPaid = true;
-    } else if (status === "unpaid") {
-      query.isPaid = false;
-    } else if (status === "delivered") {
-      query.isDelivered = true;
-    } else if (status === "pending") {
-      query.isDelivered = false;
-    }
-
-    const orders = await Order.find(query)
-      .populate("user", "name email")
-      .populate("orderItems.product", "name image price brand seller")
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    // Lọc chỉ lấy orderItems có sản phẩm của seller
-    const filteredOrders = orders.map((order) => {
-      const sellerOrderItems = order.orderItems.filter(
-        (item) =>
-          item.product &&
-          item.product.seller &&
-          item.product.seller.toString() === sellerId.toString()
-      );
-
-      const sellerTotal = sellerOrderItems.reduce(
-        (sum, item) => sum + item.product.price * item.quantity,
-        0
-      );
-
-      return {
-        ...order.toObject(),
-        orderItems: sellerOrderItems,
-        sellerTotal,
-      };
-    });
-
-    const total = await Order.countDocuments(query);
+    const userId = req.user.id;
+    const user = await User.findById(userId).select("-password");
 
     res.json({
-      orders: filteredOrders,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
+      success: true,
+      data: {
+        user,
+        shop: req.shop,
+      },
     });
   } catch (error) {
-    console.log("Error in getSellerOrders controller", error.message);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };
 
-// Thống kê bán hàng của seller
-export const getSellerSalesStats = async (req, res) => {
+export const updateSellerProfile = async (req, res) => {
   try {
-    const sellerId = req.user._id;
+    const { name, email, phone, avatar, bio } = req.body;
+    const userId = req.user.id;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { name, email, phone, avatar, bio },
+      { new: true }
+    ).select("-password");
+
+    res.json({
+      success: true,
+      data: updatedUser,
+      message: "Profile updated successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+export const getSellerDashboard = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const shop = req.shop;
+
     const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfYear = new Date(today.getFullYear(), 0, 1);
-
-    // Lấy tất cả sản phẩm của seller
-    const sellerProducts = await Product.find({ seller: sellerId }).select(
-      "_id"
+    const startOfDay = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate()
     );
-    const productIds = sellerProducts.map((product) => product._id);
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    // Tổng đơn hàng có sản phẩm của seller
-    const totalOrders = await Order.countDocuments({
-      "orderItems.product": { $in: productIds },
+    const todayOrders = await Order.countDocuments({
+      "items.shopId": shop._id,
+      createdAt: { $gte: startOfDay },
     });
 
-    const ordersThisMonth = await Order.countDocuments({
-      "orderItems.product": { $in: productIds },
+    const monthOrders = await Order.countDocuments({
+      "items.shopId": shop._id,
       createdAt: { $gte: startOfMonth },
     });
 
-    const ordersThisYear = await Order.countDocuments({
-      "orderItems.product": { $in: productIds },
-      createdAt: { $gte: startOfYear },
-    });
+    const totalProducts = await Product.countDocuments({ shop: shop._id });
 
-    // Tính doanh thu
-    const allOrders = await Order.find({
-      "orderItems.product": { $in: productIds },
-      isPaid: true,
-    }).populate("orderItems.product", "price seller");
+    const totalRevenue = await Order.aggregate([
+      { $match: { "items.shopId": shop._id, status: "delivered" } },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+    ]);
 
-    let totalRevenue = 0;
-    let revenueThisMonth = 0;
-    let revenueThisYear = 0;
-
-    allOrders.forEach((order) => {
-      order.orderItems.forEach((item) => {
-        if (
-          item.product &&
-          item.product.seller &&
-          item.product.seller.toString() === sellerId.toString()
-        ) {
-          const itemRevenue = item.product.price * item.quantity;
-          totalRevenue += itemRevenue;
-
-          if (order.createdAt >= startOfMonth) {
-            revenueThisMonth += itemRevenue;
-          }
-
-          if (order.createdAt >= startOfYear) {
-            revenueThisYear += itemRevenue;
-          }
-        }
-      });
-    });
-
-    // Đơn hàng chờ xử lý
-    const pendingOrders = await Order.countDocuments({
-      "orderItems.product": { $in: productIds },
-      isPaid: false,
-    });
-
-    // Đơn hàng đã giao
-    const deliveredOrders = await Order.countDocuments({
-      "orderItems.product": { $in: productIds },
-      isDelivered: true,
-    });
-
-    // Thống kê feedback
-    const sellerReviews = await Review.find({
-      product: { $in: productIds },
-    });
-
-    const averageRating =
-      sellerReviews.length > 0
-        ? sellerReviews.reduce((sum, review) => sum + review.rating, 0) /
-          sellerReviews.length
-        : 0;
+    const recentOrders = await Order.find({ "items.shopId": shop._id })
+      .populate("user", "name")
+      .sort({ createdAt: -1 })
+      .limit(5);
 
     res.json({
-      totalOrders,
-      ordersThisMonth,
-      ordersThisYear,
-      totalRevenue,
-      revenueThisMonth,
-      revenueThisYear,
-      pendingOrders,
-      deliveredOrders,
-      totalReviews: sellerReviews.length,
-      averageRating: Math.round(averageRating * 10) / 10,
+      success: true,
+      data: {
+        shop,
+        stats: {
+          todayOrders,
+          monthOrders,
+          totalProducts,
+          totalRevenue: totalRevenue[0]?.total || 0,
+        },
+        recentOrders,
+      },
     });
   } catch (error) {
-    console.log("Error in getSellerSalesStats controller", error.message);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };
 
-// Lấy feedback của seller
+export const getSellerOrders = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const shop = req.shop;
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const { status } = req.query;
+
+    let query = { "items.shopId": shop._id };
+    if (status) {
+      query.status = status;
+    }
+
+    const total = await Order.countDocuments(query);
+    const orders = await Order.find(query)
+      .populate("user", "name email")
+      .populate("items.product", "name images")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    res.json({
+      success: true,
+      data: {
+        orders,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+export const getSellerProducts = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const shop = req.shop;
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const products = await Product.find({ shop: shop._id })
+      .populate("category", "name")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await Product.countDocuments({ shop: shop._id });
+
+    res.json({
+      success: true,
+      data: {
+        products,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+export const getSellerAnalytics = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const shop = req.shop;
+
+    const { period = "month" } = req.query;
+    const now = new Date();
+    let startDate;
+
+    switch (period) {
+      case "week":
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case "month":
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case "year":
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    const orders = await Order.find({
+      "items.shopId": shop._id,
+      createdAt: { $gte: startDate },
+    });
+
+    const revenue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+    const orderCount = orders.length;
+
+    const topProducts = await Order.aggregate([
+      { $match: { "items.shopId": shop._id, createdAt: { $gte: startDate } } },
+      { $unwind: "$items" },
+      {
+        $group: {
+          _id: "$items.product",
+          totalSold: { $sum: "$items.quantity" },
+          totalRevenue: {
+            $sum: { $multiply: ["$items.price", "$items.quantity"] },
+          },
+        },
+      },
+      { $sort: { totalSold: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        period,
+        stats: {
+          revenue,
+          orderCount,
+          averageOrderValue: orderCount > 0 ? revenue / orderCount : 0,
+        },
+        topProducts,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+export const getSellerEarnings = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const shop = req.shop;
+
+    const { startDate, endDate } = req.query;
+    let query = { "items.shopId": shop._id, status: "completed" };
+
+    if (startDate && endDate) {
+      query.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    const orders = await Order.find(query);
+    const totalRevenue = orders.reduce(
+      (sum, order) => sum + order.totalAmount,
+      0
+    );
+    const commission = totalRevenue * 0.1;
+    const netEarnings = totalRevenue - commission;
+
+    const monthlyEarnings = await Order.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" },
+          },
+          revenue: { $sum: "$totalAmount" },
+          orderCount: { $sum: 1 },
+        },
+      },
+      { $sort: { "_id.year": -1, "_id.month": -1 } },
+      { $limit: 12 },
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenue,
+        commission,
+        netEarnings,
+        monthlyEarnings,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+export const getSellerCustomers = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const shop = req.shop;
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const customers = await Order.aggregate([
+      { $match: { "items.shopId": shop._id } },
+      {
+        $group: {
+          _id: "$user",
+          totalOrders: { $sum: 1 },
+          totalSpent: { $sum: "$totalAmount" },
+          lastOrder: { $max: "$createdAt" },
+        },
+      },
+      { $sort: { totalSpent: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: "$user" },
+      {
+        $project: {
+          _id: 1,
+          name: "$user.name",
+          email: "$user.email",
+          avatar: "$user.avatar",
+          totalOrders: 1,
+          totalSpent: 1,
+          lastOrder: 1,
+        },
+      },
+    ]);
+
+    const total = await Order.distinct("user", {
+      "items.shopId": shop._id,
+    }).then((ids) => ids.length);
+
+    res.json({
+      success: true,
+      data: {
+        customers,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+export const getSellerShopStats = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const shop = req.shop;
+
+    const totalProducts = await Product.countDocuments({ shop: shop._id });
+    const totalOrders = await Order.countDocuments({
+      "items.shopId": shop._id,
+    });
+    const totalRevenue = await Order.aggregate([
+      { $match: { "items.shopId": shop._id, status: "completed" } },
+      { $group: { _id: null, total: { $sum: "$totalAmount" } } },
+    ]);
+
+    const averageRating = await Review.aggregate([
+      {
+        $lookup: {
+          from: "products",
+          localField: "productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: "$product" },
+      { $match: { "product.shop": shop._id } },
+      { $group: { _id: null, average: { $avg: "$rating" } } },
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        shop,
+        stats: {
+          totalProducts,
+          totalOrders,
+          totalRevenue: totalRevenue[0]?.total || 0,
+          averageRating: averageRating[0]?.average || 0,
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
 export const getSellerReviews = async (req, res) => {
   try {
-    const sellerId = req.user._id;
-    const { page = 1, limit = 10 } = req.query;
+    const userId = req.user.id;
+    const shop = req.shop;
 
-    // Lấy tất cả sản phẩm của seller
-    const sellerProducts = await Product.find({ seller: sellerId }).select(
-      "_id"
-    );
-    const productIds = sellerProducts.map((product) => product._id);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-    const reviews = await Review.find({ product: { $in: productIds } })
-      .populate("user", "name")
-      .populate("product", "name image")
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    const reviews = await Review.aggregate([
+      {
+        $lookup: {
+          from: "products",
+          localField: "productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: "$product" },
+      { $match: { "product.shop": shop._id } },
+      { $skip: skip },
+      { $limit: limit },
+      { $sort: { createdAt: -1 } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: "$user" },
+      {
+        $project: {
+          _id: 1,
+          rating: 1,
+          comment: 1,
+          createdAt: 1,
+          productName: "$product.name",
+          userName: "$user.name",
+          userAvatar: "$user.avatar",
+        },
+      },
+    ]);
 
-    const total = await Review.countDocuments({ product: { $in: productIds } });
+    const total = await Review.aggregate([
+      {
+        $lookup: {
+          from: "products",
+          localField: "productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: "$product" },
+      { $match: { "product.shop": shop._id } },
+      { $count: "total" },
+    ]);
 
     res.json({
-      reviews,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
+      success: true,
+      data: {
+        reviews,
+        pagination: {
+          page,
+          limit,
+          total: total[0]?.total || 0,
+          pages: Math.ceil((total[0]?.total || 0) / limit),
+        },
+      },
     });
   } catch (error) {
-    console.log("Error in getSellerReviews controller", error.message);
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// Cập nhật trạng thái đơn hàng của seller
-export const updateSellerOrderStatus = async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { isDelivered } = req.body;
-    const sellerId = req.user._id;
-
-    const order = await Order.findById(orderId).populate(
-      "orderItems.product",
-      "seller"
-    );
-
-    if (!order) {
-      return res.status(404).json({ message: "Đơn hàng không tồn tại" });
-    }
-
-    // Kiểm tra xem đơn hàng có chứa sản phẩm của seller không
-    const hasSellerProduct = order.orderItems.some(
-      (item) =>
-        item.product &&
-        item.product.seller &&
-        item.product.seller.toString() === sellerId.toString()
-    );
-
-    if (!hasSellerProduct) {
-      return res
-        .status(403)
-        .json({ message: "Không có quyền cập nhật đơn hàng này" });
-    }
-
-    // Cập nhật trạng thái giao hàng
-    if (isDelivered !== undefined) {
-      order.isDelivered = isDelivered;
-      if (isDelivered) {
-        order.deliveredAt = new Date();
-      }
-    }
-
-    await order.save();
-
-    await order.populate("user", "name email");
-    await order.populate("orderItems.product", "name image price brand");
-
-    res.json(order);
-  } catch (error) {
-    console.log("Error in updateSellerOrderStatus controller", error.message);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };

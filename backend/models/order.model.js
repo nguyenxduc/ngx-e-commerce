@@ -1,4 +1,3 @@
-import { em, p } from "framer-motion/client";
 import mongoose from "mongoose";
 
 const orderSchema = new mongoose.Schema(
@@ -9,17 +8,36 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
 
-    orderItems: [
+    items: [
       {
         product: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Product",
           required: true,
         },
+        name: {
+          type: String,
+          required: true,
+        },
         quantity: {
           type: Number,
           required: true,
           min: [1, "Quantity must be at least 1"],
+        },
+        price: {
+          type: Number,
+          required: true,
+          min: [0, "Price cannot be negative"],
+        },
+        total: {
+          type: Number,
+          required: true,
+          min: [0, "Total cannot be negative"],
+        },
+        shopId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Shop",
+          required: true,
         },
       },
     ],
@@ -48,44 +66,31 @@ const orderSchema = new mongoose.Schema(
       required: [true, "Payment method is required"],
     },
 
-    paymentResult: {
-      id: {
-        type: String,
-      },
-      status: {
-        type: String,
-      },
-
-      update_time: {
-        type: String,
-      },
-      email_address: {
-        type: String,
-      },
-    },
-
     isPaid: {
       type: Boolean,
       default: false,
     },
 
-    paidAt: {
-      type: Date,
+    status: {
+      type: String,
+      enum: ["pending", "processing", "shipped", "delivered", "cancelled"],
+      default: "pending",
     },
 
-    isDelivered: {
-      type: Boolean,
-      default: false,
-    },
-
-    deliveredAt: {
-      type: Date,
-    },
-
-    totalPrice: {
+    totalAmount: {
       type: Number,
-      required: [true, "Total price is required"],
-      min: [0, "Total price cannot be negative"],
+      required: [true, "Total amount is required"],
+      min: [0, "Total amount cannot be negative"],
+    },
+
+    discountAmount: {
+      type: Number,
+      default: 0,
+      min: [0, "Discount amount cannot be negative"],
+    },
+    couponCode: {
+      type: String,
+      default: "",
     },
   },
 

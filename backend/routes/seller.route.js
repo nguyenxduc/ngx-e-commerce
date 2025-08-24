@@ -1,24 +1,30 @@
 import express from "express";
 import {
+  getSellerProfile,
+  updateSellerProfile,
   getSellerOrders,
-  getSellerSalesStats,
+  getSellerProducts,
   getSellerReviews,
-  updateSellerOrderStatus,
 } from "../controllers/seller.controller.js";
-import { protectRoute, sellerOrAdminRoute } from "../middleware/auth.middleware.js";
+import { protectRoute } from "../middleware/auth.middleware.js";
+import { sellerRoute } from "../middleware/shopOwner.middleware.js";
 
 const router = express.Router();
 
-// Lấy đơn hàng của seller
-router.get("/orders", protectRoute, sellerOrAdminRoute, getSellerOrders);
+// All routes require authentication and seller privileges
+router.use(protectRoute, sellerRoute);
 
-// Thống kê bán hàng của seller
-router.get("/sales-stats", protectRoute, sellerOrAdminRoute, getSellerSalesStats);
+// Profile and settings
+router.get("/profile", getSellerProfile);
+router.put("/profile", updateSellerProfile);
 
-// Lấy feedback của seller
-router.get("/reviews", protectRoute, sellerOrAdminRoute, getSellerReviews);
+// Orders management
+router.get("/orders", getSellerOrders);
 
-// Cập nhật trạng thái đơn hàng của seller
-router.patch("/orders/:orderId/status", protectRoute, sellerOrAdminRoute, updateSellerOrderStatus);
+// Products management
+router.get("/products", getSellerProducts);
 
-export default router; 
+// Reviews
+router.get("/reviews", getSellerReviews);
+
+export default router;

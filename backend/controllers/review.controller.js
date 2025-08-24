@@ -1,190 +1,281 @@
 import Review from "../models/review.model.js";
 import Product from "../models/product.model.js";
+import {
+  successResponse,
+  errorResponse,
+  validationError,
+  notFoundError,
+  paginatedResponse,
+} from "../utils/response.js";
 
-// Tạo review mới
 export const createReview = async (req, res) => {
   try {
     const { productId, rating, comment } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
-    // Kiểm tra xem user đã review sản phẩm này chưa
     const existingReview = await Review.findOne({
-      user: userId,
-      product: productId,
+      userId,
+      productId,
+      isActive: true,
     });
-
     if (existingReview) {
-      return res.status(400).json({
-        message: "Bạn đã đánh giá sản phẩm này rồi",
-      });
+      return validationError(res, "You have already reviewed this product");
     }
 
-    // Tạo review mới
-    const review = await Review.create({
-      user: userId,
-      product: productId,
+    const product = await Product.findById(productId);
+    if (!product) {
+      return notFoundError(res, "Product not found");
+    }
+
+    // Validate rating
+    if (rating < 1 || rating > 5) {
+      return validationError(res, "Rating must be between 1 and 5");
+    }
+
+    const review = new Review({
+      userId,
+      productId,
       rating,
       comment,
     });
 
-    // Cập nhật thống kê rating của sản phẩm
-    const product = await Product.findById(productId);
-    if (product) {
-      const reviews = await Review.find({ product: productId });
-      const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-      const averageRating = totalRating / reviews.length;
+    const savedReview = await review.save();
 
-      await Product.findByIdAndUpdate(productId, {
-        ratings: averageRating,
-        numReviews: reviews.length,
-      });
-    }
+    // Update product ratings
+    const avgRating = await Review.aggregate([
+      { $match: { productId, isActive: true } },
+      { $group: { _id: null, average: { $avg: "$rating" } } },
+    ]);
 
-    // Populate thông tin user
-    await review.populate("user", "name");
-
-    res.status(201).json(review);
-  } catch (error) {
-    console.log("Error in createReview controller", error.message);
-    res.status(500).json({ message: error.message });
-  }
-};
-
-// Lấy tất cả review của một sản phẩm
-export const getProductReviews = async (req, res) => {
-  try {
-    const { productId } = req.params;
-    const { page = 1, limit = 10 } = req.query;
-
-    const reviews = await Review.find({ product: productId })
-      .populate("user", "name")
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const total = await Review.countDocuments({ product: productId });
-
-    res.json({
-      reviews,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
+    await Product.findByIdAndUpdate(productId, {
+      ratings: avgRating[0]?.average || 0,
+      numReviews: await Review.countDocuments({ productId, isActive: true }),
+      $push: { reviews: savedReview._id },
     });
+
+    return successResponse(
+      res,
+      savedReview,
+      "Review created successfully",
+      201
+    );
   } catch (error) {
-    console.log("Error in getProductReviews controller", error.message);
-    res.status(500).json({ message: error.message });
+    return errorResponse(res, error);
   }
 };
 
-// Lấy tất cả review của user hiện tại
-export const getUserReviews = async (req, res) => {
+export const getReviewsByProduct = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { page = 1, limit = 10 } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-    const reviews = await Review.find({ user: userId })
-      .populate("product", "name image price")
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+    const reviews = await Review.find({
+      productId: req.params.productId,
+      isActive: true,
+    })
+      .populate("userId", "name avatar")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
 
-    const total = await Review.countDocuments({ user: userId });
-
-    res.json({
-      reviews,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total,
+    const total = await Review.countDocuments({
+      productId: req.params.productId,
+      isActive: true,
     });
+
+    const pagination = {
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalReviews: total,
+      limit,
+    };
+
+    return paginatedResponse(res, reviews, pagination);
   } catch (error) {
-    console.log("Error in getUserReviews controller", error.message);
-    res.status(500).json({ message: error.message });
+    return errorResponse(res, error);
   }
 };
 
-// Cập nhật review
+export const getReviewsByUser = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const reviews = await Review.find({ userId, isActive: true })
+      .populate("productId", "name image")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await Review.countDocuments({ userId, isActive: true });
+
+    const pagination = {
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalReviews: total,
+      limit,
+    };
+
+    return paginatedResponse(res, reviews, pagination);
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+};
+
 export const updateReview = async (req, res) => {
   try {
-    const { id } = req.params;
     const { rating, comment } = req.body;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
-    const review = await Review.findById(id);
-
+    const review = await Review.findById(req.params.id);
     if (!review) {
-      return res.status(404).json({ message: "Review không tồn tại" });
+      return notFoundError(res, "Review not found");
     }
 
-    // Kiểm tra quyền (chỉ chủ review hoặc admin mới được sửa)
-    if (review.user.toString() !== userId.toString() && req.user.role !== "admin") {
-      return res.status(403).json({ message: "Không có quyền sửa review này" });
+    if (review.userId.toString() !== userId && req.user.role !== "admin") {
+      return validationError(res, "Not authorized to update this review");
     }
 
-    // Cập nhật review
-    review.rating = rating;
-    review.comment = comment;
-    await review.save();
-
-    // Cập nhật thống kê rating của sản phẩm
-    const product = await Product.findById(review.product);
-    if (product) {
-      const reviews = await Review.find({ product: review.product });
-      const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-      const averageRating = totalRating / reviews.length;
-
-      await Product.findByIdAndUpdate(review.product, {
-        ratings: averageRating,
-        numReviews: reviews.length,
-      });
+    // Validate rating if provided
+    if (rating && (rating < 1 || rating > 5)) {
+      return validationError(res, "Rating must be between 1 and 5");
     }
 
-    await review.populate("user", "name");
+    const updatedReview = await Review.findByIdAndUpdate(
+      req.params.id,
+      { rating, comment },
+      { new: true }
+    );
 
-    res.json(review);
+    // Update product ratings
+    const avgRating = await Review.aggregate([
+      { $match: { productId: review.productId, isActive: true } },
+      { $group: { _id: null, average: { $avg: "$rating" } } },
+    ]);
+
+    await Product.findByIdAndUpdate(review.productId, {
+      ratings: avgRating[0]?.average || 0,
+    });
+
+    return successResponse(res, updatedReview, "Review updated successfully");
   } catch (error) {
-    console.log("Error in updateReview controller", error.message);
-    res.status(500).json({ message: error.message });
+    return errorResponse(res, error);
   }
 };
 
-// Xóa review
 export const deleteReview = async (req, res) => {
   try {
-    const { id } = req.params;
-    const userId = req.user._id;
+    const userId = req.user.id;
 
-    const review = await Review.findById(id);
+    const review = await Review.findById(req.params.id);
+    if (!review) {
+      return notFoundError(res, "Review not found");
+    }
+
+    if (review.userId.toString() !== userId && req.user.role !== "admin") {
+      return validationError(res, "Not authorized to delete this review");
+    }
+
+    // Soft delete
+    await Review.findByIdAndUpdate(req.params.id, { isActive: false });
+
+    // Update product ratings
+    const avgRating = await Review.aggregate([
+      { $match: { productId: review.productId, isActive: true } },
+      { $group: { _id: null, average: { $avg: "$rating" } } },
+    ]);
+
+    await Product.findByIdAndUpdate(review.productId, {
+      ratings: avgRating[0]?.average || 0,
+      numReviews: await Review.countDocuments({
+        productId: review.productId,
+        isActive: true,
+      }),
+      $pull: { reviews: review._id },
+    });
+
+    return successResponse(res, null, "Review deleted successfully");
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+};
+
+export const getReviewById = async (req, res) => {
+  try {
+    const review = await Review.findById(req.params.id)
+      .populate("userId", "name avatar")
+      .populate("productId", "name image");
 
     if (!review) {
-      return res.status(404).json({ message: "Review không tồn tại" });
+      return notFoundError(res, "Review not found");
     }
 
-    // Kiểm tra quyền (chỉ chủ review hoặc admin mới được xóa)
-    if (review.user.toString() !== userId.toString() && req.user.role !== "admin") {
-      return res.status(403).json({ message: "Không có quyền xóa review này" });
-    }
-
-    const productId = review.product;
-
-    // Xóa review
-    await Review.findByIdAndDelete(id);
-
-    // Cập nhật thống kê rating của sản phẩm
-    const product = await Product.findById(productId);
-    if (product) {
-      const reviews = await Review.find({ product: productId });
-      const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
-      const averageRating = reviews.length > 0 ? totalRating / reviews.length : 0;
-
-      await Product.findByIdAndUpdate(productId, {
-        ratings: averageRating,
-        numReviews: reviews.length,
-      });
-    }
-
-    res.json({ message: "Review đã được xóa thành công" });
+    return successResponse(res, review);
   } catch (error) {
-    console.log("Error in deleteReview controller", error.message);
-    res.status(500).json({ message: error.message });
+    return errorResponse(res, error);
   }
-}; 
+};
+
+export const getAllReviews = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const reviews = await Review.find({ isActive: true })
+      .populate("userId", "name email")
+      .populate("productId", "name")
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    const total = await Review.countDocuments({ isActive: true });
+
+    const pagination = {
+      currentPage: page,
+      totalPages: Math.ceil(total / limit),
+      totalReviews: total,
+      limit,
+    };
+
+    return paginatedResponse(res, reviews, pagination);
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+};
+
+export const getProductReviewStats = async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    const [totalReviews, averageRating, ratingDistribution, recentReviews] =
+      await Promise.all([
+        Review.countDocuments({ productId, isActive: true }),
+        Review.aggregate([
+          { $match: { productId, isActive: true } },
+          { $group: { _id: null, average: { $avg: "$rating" } } },
+        ]),
+        Review.aggregate([
+          { $match: { productId, isActive: true } },
+          { $group: { _id: "$rating", count: { $sum: 1 } } },
+          { $sort: { _id: -1 } },
+        ]),
+        Review.find({ productId, isActive: true })
+          .populate("userId", "name avatar")
+          .sort({ createdAt: -1 })
+          .limit(5),
+      ]);
+
+    return successResponse(res, {
+      totalReviews,
+      averageRating: averageRating[0]?.average || 0,
+      ratingDistribution,
+      recentReviews,
+    });
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+};

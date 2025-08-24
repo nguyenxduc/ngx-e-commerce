@@ -1,28 +1,24 @@
 import express from "express";
 import {
   createReview,
-  getProductReviews,
+  getReviewsByProduct,
   updateReview,
   deleteReview,
-  getUserReviews,
+  getAllReviews,
 } from "../controllers/review.controller.js";
 import { protectRoute, adminRoute } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-// Lấy tất cả review của một sản phẩm
-router.get("/product/:productId", getProductReviews);
+// Public routes
+router.get("/product/:productId", getReviewsByProduct);
 
-// Lấy tất cả review của user hiện tại
-router.get("/user", protectRoute, getUserReviews);
-
-// Tạo review mới
+// Protected routes
 router.post("/", protectRoute, createReview);
-
-// Cập nhật review
 router.put("/:id", protectRoute, updateReview);
-
-// Xóa review (chỉ admin hoặc chủ review)
 router.delete("/:id", protectRoute, deleteReview);
 
-export default router; 
+// Admin routes
+router.get("/", protectRoute, adminRoute, getAllReviews);
+
+export default router;
