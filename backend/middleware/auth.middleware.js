@@ -3,7 +3,13 @@ import User from "../models/user.model.js";
 
 export const protectRoute = async (req, res, next) => {
   try {
-    const accessToken = req.cookies.accessToken;
+    let accessToken;
+
+    if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+      accessToken = req.headers.authorization.split(" ")[1];
+    } else if (req.cookies.accessToken) {
+      accessToken = req.cookies.accessToken;
+    }
 
     if (!accessToken) {
       return res
@@ -26,7 +32,6 @@ export const protectRoute = async (req, res, next) => {
       }
 
       req.user = user;
-
       next();
     } catch (error) {
       if (error.name === "TokenExpiredError") {
@@ -40,7 +45,7 @@ export const protectRoute = async (req, res, next) => {
       throw error;
     }
   } catch (error) {
-    console.log("Error in protectRoute middleware", error.message);
+    console.error("Error in protectRoute middleware:", error.message);
     return res
       .status(401)
       .json({ 

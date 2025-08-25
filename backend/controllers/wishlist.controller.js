@@ -4,8 +4,6 @@ import Product from "../models/product.model.js";
 export const getUserWishlist = async (req, res) => {
   try {
     const userId = req.user.id;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
 
     const wishlist = await Wishlist.findOne({ user: userId }).populate({
       path: "items.product",
@@ -13,33 +11,13 @@ export const getUserWishlist = async (req, res) => {
     });
 
     if (!wishlist) {
-      return res.json({
-        wishlist: { items: [] },
-        pagination: {
-          page,
-          limit,
-          total: 0,
-          pages: 0,
-        },
-      });
+      return res.json({ items: [] });
     }
 
-    const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-    const paginatedItems = wishlist.items.slice(startIndex, endIndex);
-
     res.json({
-      wishlist: {
-        id: wishlist._id,
-        items: paginatedItems,
-        totalItems: wishlist.items.length,
-      },
-      pagination: {
-        page,
-        limit,
-        total: wishlist.items.length,
-        pages: Math.ceil(wishlist.items.length / limit),
-      },
+      id: wishlist._id,
+      items: wishlist.items,
+      totalItems: wishlist.items.length,
     });
   } catch (error) {
     res
@@ -54,12 +32,8 @@ export const addToWishlist = async (req, res) => {
     const userId = req.user.id;
 
     const product = await Product.findById(productId);
-    if (!product) {
+    if (!product || !product.isActive) {
       return res.status(404).json({ message: "Product not found" });
-    }
-
-    if (!product.isActive) {
-      return res.status(400).json({ message: "Product is not available" });
     }
 
     let wishlist = await Wishlist.findOne({ user: userId });

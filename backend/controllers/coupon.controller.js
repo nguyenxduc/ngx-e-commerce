@@ -9,9 +9,12 @@ export const createCoupon = async (req, res) => {
       isActive = true,
     } = req.body;
 
-    const existingCoupon = await Coupon.findOne({ code });
+    const existingCoupon = await Coupon.findOne({
+      code,
+      isActive: true,
+    });
     if (existingCoupon) {
-      return res.status(400).json({ error: "Coupon code already exists" });
+      return res.status(400).json({ message: "Coupon code already exists" });
     }
 
     const coupon = new Coupon({
@@ -22,22 +25,14 @@ export const createCoupon = async (req, res) => {
     });
 
     const savedCoupon = await coupon.save();
-    res.status(201).json(savedCoupon);
+    res.status(201).json({
+      message: "Coupon created successfully",
+      coupon: savedCoupon,
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const getCoupon = async (req, res) => {
-  try {
-    const coupon = await Coupon.findOne({ code: req.params.code });
-    if (!coupon) {
-      return res.status(404).json({ error: "Coupon not found" });
-    }
-
-    res.json(coupon);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to create coupon", error: error.message });
   }
 };
 
@@ -45,18 +40,17 @@ export const validateCoupon = async (req, res) => {
   try {
     const { code, amount } = req.body;
 
-    const coupon = await Coupon.findOne({ code });
+    const coupon = await Coupon.findOne({
+      code,
+      isActive: true,
+    });
     if (!coupon) {
-      return res.status(404).json({ error: "Invalid coupon code" });
-    }
-
-    if (!coupon.isActive) {
-      return res.status(400).json({ error: "Coupon is not active" });
+      return res.status(404).json({ message: "Invalid coupon code" });
     }
 
     const now = new Date();
     if (now > coupon.expirationDate) {
-      return res.status(400).json({ error: "Coupon has expired" });
+      return res.status(400).json({ message: "Coupon has expired" });
     }
 
     const discount = (amount * coupon.discountPercentage) / 100;
@@ -68,44 +62,35 @@ export const validateCoupon = async (req, res) => {
       finalAmount: amount - discount,
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to validate coupon", error: error.message });
   }
 };
 
 export const getAllCoupons = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    const coupons = await Coupon.find()
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
-
-    const total = await Coupon.countDocuments();
-
-    res.json({
-      coupons,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalCoupons: total,
-    });
+    const coupons = await Coupon.find({ isActive: true });
+    res.json(coupons);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to get coupons", error: error.message });
   }
 };
 
 export const getCouponById = async (req, res) => {
   try {
     const coupon = await Coupon.findById(req.params.id);
-    if (!coupon) {
-      return res.status(404).json({ error: "Coupon not found" });
+    if (!coupon || !coupon.isActive) {
+      return res.status(404).json({ message: "Coupon not found" });
     }
 
     res.json(coupon);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to get coupon", error: error.message });
   }
 };
 
@@ -114,14 +99,17 @@ export const updateCoupon = async (req, res) => {
     const { code, discountPercentage, expirationDate, isActive } = req.body;
 
     const coupon = await Coupon.findById(req.params.id);
-    if (!coupon) {
-      return res.status(404).json({ error: "Coupon not found" });
+    if (!coupon || !coupon.isActive) {
+      return res.status(404).json({ message: "Coupon not found" });
     }
 
     if (code && code !== coupon.code) {
-      const existingCoupon = await Coupon.findOne({ code });
+      const existingCoupon = await Coupon.findOne({
+        code,
+        isActive: true,
+      });
       if (existingCoupon) {
-        return res.status(400).json({ error: "Coupon code already exists" });
+        return res.status(400).json({ message: "Coupon code already exists" });
       }
     }
 
@@ -136,9 +124,14 @@ export const updateCoupon = async (req, res) => {
       { new: true }
     );
 
-    res.json(updatedCoupon);
+    res.json({
+      message: "Coupon updated successfully",
+      coupon: updatedCoupon,
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to update coupon", error: error.message });
   }
 };
 
@@ -146,92 +139,14 @@ export const deleteCoupon = async (req, res) => {
   try {
     const coupon = await Coupon.findById(req.params.id);
     if (!coupon) {
-      return res.status(404).json({ error: "Coupon not found" });
+      return res.status(404).json({ message: "Coupon not found" });
     }
 
-    await Coupon.findByIdAndDelete(req.params.id);
+    await Coupon.findByIdAndUpdate(req.params.id, { isActive: false });
     res.json({ message: "Coupon deleted successfully" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const getCouponStats = async (req, res) => {
-  try {
-    const totalCoupons = await Coupon.countDocuments();
-    const activeCoupons = await Coupon.countDocuments({ isActive: true });
-    const expiredCoupons = await Coupon.countDocuments({
-      expirationDate: { $lt: new Date() },
-    });
-
-    res.json({
-      totalCoupons,
-      activeCoupons,
-      expiredCoupons,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const applyCoupon = async (req, res) => {
-  try {
-    const { code, amount } = req.body;
-
-    const coupon = await Coupon.findOne({ code });
-    if (!coupon) {
-      return res.status(404).json({ error: "Invalid coupon code" });
-    }
-
-    if (!coupon.isActive) {
-      return res.status(400).json({ error: "Coupon is not active" });
-    }
-
-    const now = new Date();
-    if (now > coupon.expirationDate) {
-      return res.status(400).json({ error: "Coupon has expired" });
-    }
-
-    const discount = (amount * coupon.discountPercentage) / 100;
-
-    res.json({
-      success: true,
-      coupon,
-      discount,
-      finalAmount: amount - discount,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-export const getUserCoupons = async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    const now = new Date();
-    const coupons = await Coupon.find({
-      isActive: true,
-      expirationDate: { $gte: now },
-    })
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
-
-    const total = await Coupon.countDocuments({
-      isActive: true,
-      expirationDate: { $gte: now },
-    });
-
-    res.json({
-      coupons,
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalCoupons: total,
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to delete coupon", error: error.message });
   }
 };

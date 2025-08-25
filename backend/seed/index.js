@@ -12,7 +12,7 @@ dotenv.config();
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(process.env.MONGO_URI);
     console.log("✅ Connected to MongoDB");
   } catch (error) {
     console.error("❌ MongoDB connection error:", error);
@@ -77,8 +77,7 @@ const runSeeds = async () => {
 };
 
 // Run if this file is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  connectDB().then(runSeeds);
-}
+
+connectDB().then(runSeeds);
 
 export { runSeeds };

@@ -1,4 +1,3 @@
-import { desc } from "framer-motion/client";
 import mongoose from "mongoose";
 
 const productTypeSchema = new mongoose.Schema({

@@ -1,81 +1,41 @@
-export interface OrderItem {
-  _id: string;
+import type {
+  BaseEntity,
+  Address,
+  OrderStatus,
+  PaymentMethod,
+} from "./common.types";
+
+export type OrderItem = {
   product: string;
   name: string;
   quantity: number;
   price: number;
   total: number;
   shopId: string;
-}
+};
 
-export interface Order {
-  _id: string;
-  user:
-    | string
-    | {
-        _id: string;
-        name: string;
-        email: string;
-      };
+export type Order = BaseEntity & {
+  user: string;
   items: OrderItem[];
-  shippingAddress: {
-    address: string;
-    city: string;
-    postalCode: string;
-    country: string;
-  };
-  paymentMethod: string;
+  shippingAddress: Address;
+  paymentMethod: PaymentMethod;
   isPaid: boolean;
-  status: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
+  status: OrderStatus;
   totalAmount: number;
   discountAmount: number;
   couponCode: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-}
+};
 
-export interface CreateOrderRequest {
-  shippingAddress: {
-    address: string;
-    city: string;
-    postalCode: string;
-    country: string;
-  };
-  paymentMethod: string;
+export type CreateOrderRequest = {
+  items: {
+    product: string;
+    quantity: number;
+  }[];
+  shippingAddress: Address;
+  paymentMethod: PaymentMethod;
   couponCode?: string;
-}
+};
 
-export interface CreateOrderResponse extends Order {}
-
-export interface GetOrdersRequest {
-  page?: number;
-  limit?: number;
-  status?: string;
-}
-
-export interface GetOrdersResponse {
-  orders: Order[];
-  pagination: {
-    currentPage: number;
-    totalPages: number;
-    totalOrders: number;
-    limit: number;
-  };
-}
-
-export interface GetOrderByIdResponse extends Order {}
-
-export interface UpdateOrderStatusRequest {
-  status: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
-}
-
-export interface UpdateOrderStatusResponse extends Order {}
-
-export interface DeleteOrderResponse {
-  message: string;
-}
-
-export interface OrderErrorResponse {
-  message: string;
-  error?: string;
-}
+export type UpdateOrderStatusRequest = {
+  status: OrderStatus;
+};

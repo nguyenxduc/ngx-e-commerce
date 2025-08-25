@@ -6,15 +6,7 @@ import Follower from "../models/follower.model.js";
 export const createShop = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { 
-      name, 
-      description, 
-      address, 
-      contactInfo, 
-      businessInfo,
-      logo, 
-      banner 
-    } = req.body;
+    const { name, description, logo, banner } = req.body;
 
     const existingShop = await Shop.findOne({
       $or: [
@@ -32,9 +24,6 @@ export const createShop = async (req, res) => {
     const shop = new Shop({
       name,
       description,
-      address,
-      contactInfo,
-      businessInfo,
       logo,
       banner,
       ownerId: userId,
@@ -42,9 +31,9 @@ export const createShop = async (req, res) => {
 
     await shop.save();
 
-    await User.findByIdAndUpdate(userId, { 
+    await User.findByIdAndUpdate(userId, {
       role: "seller",
-      shop: shop._id 
+      shop: shop._id,
     });
 
     res.status(201).json({
@@ -60,40 +49,21 @@ export const createShop = async (req, res) => {
 
 export const getAllShops = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
     const search = req.query.search;
-    const status = req.query.status;
+    const query = { isActive: true };
 
-    const query = {};
     if (search) {
       query.name = { $regex: search, $options: "i" };
     }
-    if (status) {
-      query.status = status;
-    } else {
-      query.status = "approved";
-    }
 
-    const total = await Shop.countDocuments(query);
     const shops = await Shop.find(query)
       .populate({
-        path: "owner",
+        path: "ownerId",
         select: "name email",
       })
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
+      .sort({ createdAt: -1 });
 
-    res.json({
-      shops,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
-    });
+    res.json(shops);
   } catch (error) {
     res
       .status(500)
@@ -103,28 +73,14 @@ export const getAllShops = async (req, res) => {
 
 export const getPendingShops = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-
-    const total = await Shop.countDocuments({ status: "pending" });
-    const shops = await Shop.find({ status: "pending" })
+    const shops = await Shop.find({ isActive: true })
       .populate({
-        path: "owner",
+        path: "ownerId",
         select: "name email",
       })
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
+      .sort({ createdAt: -1 });
 
-    res.json({
-      shops,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
-    });
+    res.json(shops);
   } catch (error) {
     res
       .status(500)
@@ -141,12 +97,7 @@ export const approveShop = async (req, res) => {
       return res.status(404).json({ message: "Shop not found" });
     }
 
-    if (shop.status !== "pending") {
-      return res.status(400).json({ message: "Shop is not pending approval" });
-    }
-
-    shop.status = "approved";
-    shop.approvedAt = new Date();
+    shop.isActive = true;
     await shop.save();
 
     res.json({
@@ -163,22 +114,16 @@ export const approveShop = async (req, res) => {
 export const rejectShop = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
 
     const shop = await Shop.findById(id);
     if (!shop) {
       return res.status(404).json({ message: "Shop not found" });
     }
 
-    if (shop.status !== "pending") {
-      return res.status(400).json({ message: "Shop is not pending approval" });
-    }
-
-    shop.status = "rejected";
-    shop.rejectionReason = reason;
+    shop.isActive = false;
     await shop.save();
 
-    await User.findByIdAndUpdate(shop.owner, { role: "user" });
+    await User.findByIdAndUpdate(shop.ownerId, { role: "user" });
 
     res.json({
       message: "Shop rejected successfully",
@@ -194,19 +139,17 @@ export const rejectShop = async (req, res) => {
 export const suspendShop = async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
 
     const shop = await Shop.findById(id);
     if (!shop) {
       return res.status(404).json({ message: "Shop not found" });
     }
 
-    if (shop.status === "suspended") {
+    if (!shop.isActive) {
       return res.status(400).json({ message: "Shop is already suspended" });
     }
 
-    shop.status = "suspended";
-    shop.suspensionReason = reason;
+    shop.isActive = false;
     await shop.save();
 
     res.json({
@@ -229,12 +172,11 @@ export const reactivateShop = async (req, res) => {
       return res.status(404).json({ message: "Shop not found" });
     }
 
-    if (shop.status !== "suspended") {
-      return res.status(400).json({ message: "Shop is not suspended" });
+    if (shop.isActive) {
+      return res.status(400).json({ message: "Shop is already active" });
     }
 
-    shop.status = "approved";
-    shop.suspensionReason = undefined;
+    shop.isActive = true;
     await shop.save();
 
     res.json({
@@ -253,7 +195,7 @@ export const getShopById = async (req, res) => {
     const { id } = req.params;
 
     const shop = await Shop.findById(id).populate({
-      path: "owner",
+      path: "ownerId",
       select: "name email",
     });
 
@@ -261,7 +203,7 @@ export const getShopById = async (req, res) => {
       return res.status(404).json({ message: "Shop not found" });
     }
 
-    if (shop.status !== "approved") {
+    if (!shop.isActive) {
       return res.status(404).json({ message: "Shop not found" });
     }
 
@@ -273,11 +215,9 @@ export const getShopById = async (req, res) => {
     const followerCount = await Follower.countDocuments({ shop: id });
 
     res.json({
-      shop: {
-        ...shop.toObject(),
-        productCount,
-        followerCount,
-      },
+      ...shop.toObject(),
+      productCount,
+      followerCount,
     });
   } catch (error) {
     res
@@ -289,15 +229,11 @@ export const getShopById = async (req, res) => {
 export const updateShop = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, address, phone, email, logo, banner } = req.body;
+    const { name, description, logo, banner } = req.body;
 
     const shop = await Shop.findById(id);
     if (!shop) {
       return res.status(404).json({ message: "Shop not found" });
-    }
-
-    if (shop.owner.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Access denied" });
     }
 
     if (name && name !== shop.name) {
@@ -314,9 +250,6 @@ export const updateShop = async (req, res) => {
     const updateData = {};
     if (name !== undefined) updateData.name = name;
     if (description !== undefined) updateData.description = description;
-    if (address !== undefined) updateData.address = address;
-    if (phone !== undefined) updateData.phone = phone;
-    if (email !== undefined) updateData.email = email;
     if (logo !== undefined) updateData.logo = logo;
     if (banner !== undefined) updateData.banner = banner;
 
@@ -344,19 +277,14 @@ export const deleteShop = async (req, res) => {
       return res.status(404).json({ message: "Shop not found" });
     }
 
-    if (shop.owner.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
     const productCount = await Product.countDocuments({ shop: id });
     if (productCount > 0) {
       return res.status(400).json({
         message: "Cannot delete shop with existing products",
-        productCount,
       });
     }
 
-    await Shop.findByIdAndDelete(id);
+    await Shop.findByIdAndUpdate(id, { isActive: false });
     await User.findByIdAndUpdate(req.user.id, { role: "user" });
 
     res.json({ message: "Shop deleted successfully" });
@@ -370,43 +298,25 @@ export const deleteShop = async (req, res) => {
 export const getShopProducts = async (req, res) => {
   try {
     const { id } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
     const sort = req.query.sort || "createdAt";
     const order = req.query.order || "desc";
 
     const shop = await Shop.findById(id);
-    if (!shop || shop.status !== "approved") {
+    if (!shop || !shop.isActive) {
       return res.status(404).json({ message: "Shop not found" });
     }
 
     const sortOptions = {};
     sortOptions[sort] = order === "desc" ? -1 : 1;
 
-    const total = await Product.countDocuments({
-      shop: id,
-      isActive: true,
-    });
-
     const products = await Product.find({
       shop: id,
       isActive: true,
     })
       .select("name price images rating stock description")
-      .sort(sortOptions)
-      .skip((page - 1) * limit)
-      .limit(limit);
+      .sort(sortOptions);
 
-    res.json({
-      shop,
-      products,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
-    });
+    res.json({ shop, products });
   } catch (error) {
     res
       .status(500)
@@ -420,7 +330,7 @@ export const toggleFollowShop = async (req, res) => {
     const userId = req.user.id;
 
     const shop = await Shop.findById(id);
-    if (!shop || shop.status !== "approved") {
+    if (!shop || !shop.isActive) {
       return res.status(404).json({ message: "Shop not found" });
     }
 

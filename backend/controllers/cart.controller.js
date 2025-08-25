@@ -7,7 +7,7 @@ export const addToCart = async (req, res) => {
     const userId = req.user.id;
 
     const productDoc = await Product.findById(product);
-    if (!productDoc) {
+    if (!productDoc || !productDoc.isActive) {
       return res.status(404).json({ message: "Product not found" });
     }
 
@@ -44,6 +44,11 @@ export const addToCart = async (req, res) => {
 
     await cart.save();
 
+    const populatedCart = await Cart.findById(cart._id).populate({
+      path: "items.product",
+      select: "name price image countInStock status description brand",
+    });
+
     res.status(201).json({
       message: "Product added to cart",
       cart: populatedCart,
@@ -58,18 +63,12 @@ export const addToCart = async (req, res) => {
 export const getCartProducts = async (req, res) => {
   try {
     const userId = req.user.id;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-
+    const cart = await Cart.findOne({ user: userId });
     if (!cart) {
-      return res.json([]);
+      return res.status(404).json({ message: "Cart not found" });
     }
 
-    const startIndex = (page - 1) * limit;
-    const endIndex = page * limit;
-    const paginatedItems = cart.items.slice(startIndex, endIndex);
-
-    res.json(paginatedItems);
+    res.json(cart.items);
   } catch (error) {
     res
       .status(500)
@@ -118,7 +117,7 @@ export const updateQuantity = async (req, res) => {
     }
 
     const product = await Product.findById(cartItem.product);
-    if (!product) {
+    if (!product || !product.isActive) {
       return res.status(404).json({ message: "Product not found" });
     }
 
@@ -147,5 +146,31 @@ export const updateQuantity = async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to update quantity", error: error.message });
+  }
+};
+
+export const deleteCartItem = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const cart = await Cart.findOne({ user: userId });
+    if (!cart) {
+      return res.status(404).json({ message: "Cart not found" });
+    }
+
+    const cartItem = cart.items.id(id);
+    if (!cartItem) {
+      return res.status(404).json({ message: "Item not found in cart" });
+    }
+
+    cart.items = cart.items.filter((item) => item.product.toString() !== id);
+    await cart.save();
+
+    res.json({ message: "Item removed from cart" });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Failed to delete cart item", error: error.message });
   }
 };

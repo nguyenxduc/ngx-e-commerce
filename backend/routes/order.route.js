@@ -10,9 +10,13 @@ import {
 import { protectRoute, adminRoute } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
+
+// User routes
 router.post("/", protectRoute, createOrder);
 router.get("/user/orders", protectRoute, getUserOrders);
 router.get("/:id", protectRoute, getOrderById);
+
+// Admin routes
 router.get("/", protectRoute, adminRoute, getAllOrders);
 router.patch("/:id/status", protectRoute, adminRoute, updateOrderStatus);
 router.delete("/:id", protectRoute, adminRoute, deleteOrder);

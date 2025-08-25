@@ -17,10 +17,6 @@ import wishlistRoutes from "./routes/wishlist.route.js";
 import followerRoutes from "./routes/follower.route.js";
 import chatRoutes from "./routes/chat.route.js";
 
-import {
-  errorHandler,
-  notFoundHandler,
-} from "./middleware/error.middleware.js";
 import cors from "cors";
 
 const app = express();
@@ -54,10 +50,6 @@ app.use("/api/shops", shopRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/followers", followerRoutes);
 app.use("/api/chat", chatRoutes);
-
-// Error handling middleware
-app.use(notFoundHandler);
-app.use(errorHandler);
 
 // Initialize Socket.IO
 initializeSocket(server);

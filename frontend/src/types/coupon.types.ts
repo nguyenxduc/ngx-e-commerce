@@ -1,101 +1,39 @@
-export interface Coupon {
-  _id: string;
+import type { BaseEntity } from "./common.types";
+
+export type Coupon = BaseEntity & {
   code: string;
   discountPercentage: number;
-  expirationDate: Date;
+  expirationDate: string;
   isActive: boolean;
-  createdAt?: Date;
-  updatedAt?: Date;
-}
+};
 
-export interface CreateCouponRequest {
+export type CreateCouponRequest = {
   code: string;
   discountPercentage: number;
-  expirationDate: Date;
-  isActive?: boolean;
-}
+  expirationDate: string;
+};
 
-export interface CreateCouponResponse extends Coupon {}
-
-export interface GetCouponRequest {
-  code: string;
-}
-
-export interface GetCouponResponse extends Coupon {}
-
-export interface ValidateCouponRequest {
-  code: string;
-  amount: number;
-}
-
-export interface ValidateCouponResponse {
-  valid: boolean;
-  coupon: Coupon;
-  discount: number;
-  finalAmount: number;
-}
-
-export interface GetAllCouponsRequest {
-  page?: number;
-  limit?: number;
-}
-
-export interface GetAllCouponsResponse {
-  coupons: Coupon[];
-  currentPage: number;
-  totalPages: number;
-  totalCoupons: number;
-}
-
-export interface GetCouponByIdRequest {
-  id: string;
-}
-
-export interface GetCouponByIdResponse extends Coupon {}
-
-export interface UpdateCouponRequest {
-  code?: string;
+export type UpdateCouponRequest = {
   discountPercentage?: number;
-  expirationDate?: Date;
+  expirationDate?: string;
   isActive?: boolean;
-}
+};
 
-export interface UpdateCouponResponse extends Coupon {}
-
-export interface DeleteCouponResponse {
-  message: string;
-}
-
-export interface CouponStats {
-  totalCoupons: number;
-  activeCoupons: number;
-  expiredCoupons: number;
-}
-
-export interface ApplyCouponRequest {
+export type ValidateCouponRequest = {
   code: string;
   amount: number;
-}
+};
 
-export interface ApplyCouponResponse {
-  success: boolean;
-  coupon: Coupon;
-  discount: number;
-  finalAmount: number;
-}
+export type ValidateCouponResponse = {
+  isValid: boolean;
+  coupon?: Coupon;
+  discountAmount: number;
+  message?: string;
+};
 
-export interface GetUserCouponsRequest {
-  page?: number;
-  limit?: number;
-}
-
-export interface GetUserCouponsResponse {
-  coupons: Coupon[];
-  currentPage: number;
-  totalPages: number;
-  totalCoupons: number;
-}
-
-export interface CouponErrorResponse {
-  error: string;
-}
+export type CouponFilters = {
+  isActive?: boolean;
+  search?: string;
+  sortBy?: "createdAt" | "discountValue" | "usageLimit";
+  sortOrder?: "asc" | "desc";
+};

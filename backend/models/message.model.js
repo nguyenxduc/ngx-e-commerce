@@ -12,36 +12,15 @@ const messageSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    senderType: {
-      type: String,
-      enum: ["customer", "shop"],
-      required: true,
-    },
     content: {
       type: String,
       required: true,
       trim: true,
     },
-    messageType: {
-      type: String,
-      enum: ["text", "image", "file", "order", "product"],
-      default: "text",
+    attachments: {
+      type: Array,
+      default: [],
     },
-    attachments: [
-      {
-        type: {
-          type: String,
-          enum: ["image", "file"],
-          required: true,
-        },
-        url: {
-          type: String,
-          required: true,
-        },
-        filename: String,
-        size: Number,
-      },
-    ],
   },
   {
     timestamps: true,

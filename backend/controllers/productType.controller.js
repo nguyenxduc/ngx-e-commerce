@@ -1,24 +1,18 @@
 import ProductType from "../models/productType.model.js";
 import Product from "../models/product.model.js";
-import {
-  successResponse,
-  errorResponse,
-  validationError,
-  notFoundError,
-  paginatedResponse,
-} from "../utils/response.js";
 
 export const createProductType = async (req, res) => {
   try {
     const { name, description } = req.body;
 
-    // Check if product type with same name already exists
     const existingProductType = await ProductType.findOne({
       name: { $regex: new RegExp(`^${name}$`, "i") },
       isActive: true,
     });
     if (existingProductType) {
-      return validationError(res, "Product type with this name already exists");
+      return res
+        .status(400)
+        .json({ message: "Product type with this name already exists" });
     }
 
     const productType = new ProductType({
@@ -27,40 +21,25 @@ export const createProductType = async (req, res) => {
     });
 
     const savedProductType = await productType.save();
-    return successResponse(
-      res,
-      savedProductType,
-      "Product type created successfully",
-      201
-    );
+    res.status(201).json({
+      message: "Product type created successfully",
+      productType: savedProductType,
+    });
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to create product type", error: error.message });
   }
 };
 
 export const getAllProductTypes = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
-    const productTypes = await ProductType.find({ isActive: true })
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
-
-    const total = await ProductType.countDocuments({ isActive: true });
-
-    const pagination = {
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalProductTypes: total,
-      limit,
-    };
-
-    return paginatedResponse(res, productTypes, pagination);
+    const productTypes = await ProductType.find({ isActive: true });
+    res.json(productTypes);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get product types", error: error.message });
   }
 };
 
@@ -68,13 +47,15 @@ export const getProductTypeById = async (req, res) => {
   try {
     const productType = await ProductType.findById(req.params.id);
 
-    if (!productType) {
-      return notFoundError(res, "Product type not found");
+    if (!productType || !productType.isActive) {
+      return res.status(404).json({ message: "Product type not found" });
     }
 
-    return successResponse(res, productType);
+    res.json(productType);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get product type", error: error.message });
   }
 };
 
@@ -83,11 +64,10 @@ export const updateProductType = async (req, res) => {
     const { name, description } = req.body;
 
     const productType = await ProductType.findById(req.params.id);
-    if (!productType) {
-      return notFoundError(res, "Product type not found");
+    if (!productType || !productType.isActive) {
+      return res.status(404).json({ message: "Product type not found" });
     }
 
-    // Check if name is being updated and if it conflicts with existing product type
     if (name && name !== productType.name) {
       const existingProductType = await ProductType.findOne({
         name: { $regex: new RegExp(`^${name}$`, "i") },
@@ -95,10 +75,9 @@ export const updateProductType = async (req, res) => {
         _id: { $ne: req.params.id },
       });
       if (existingProductType) {
-        return validationError(
-          res,
-          "Product type with this name already exists"
-        );
+        return res
+          .status(400)
+          .json({ message: "Product type with this name already exists" });
       }
     }
 
@@ -108,13 +87,14 @@ export const updateProductType = async (req, res) => {
       { new: true }
     );
 
-    return successResponse(
-      res,
-      updatedProductType,
-      "Product type updated successfully"
-    );
+    res.json({
+      message: "Product type updated successfully",
+      productType: updatedProductType,
+    });
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to update product type", error: error.message });
   }
 };
 
@@ -122,27 +102,15 @@ export const deleteProductType = async (req, res) => {
   try {
     const productType = await ProductType.findById(req.params.id);
     if (!productType) {
-      return notFoundError(res, "Product type not found");
+      return res.status(404).json({ message: "Product type not found" });
     }
 
-    // Check if there are any products using this product type
-    const productsCount = await Product.countDocuments({
-      category: req.params.id,
-      isActive: true,
-    });
-
-    if (productsCount > 0) {
-      return validationError(
-        res,
-        `Cannot delete product type. There are ${productsCount} active products using this type.`
-      );
-    }
-
-    // Soft delete by setting isActive to false
     await ProductType.findByIdAndUpdate(req.params.id, { isActive: false });
-    return successResponse(res, null, "Product type deleted successfully");
+    res.json({ message: "Product type deleted successfully" });
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to delete product type", error: error.message });
   }
 };
 
@@ -152,8 +120,13 @@ export const getActiveProductTypes = async (req, res) => {
       .select("name description")
       .sort({ name: 1 });
 
-    return successResponse(res, productTypes);
+    res.json(productTypes);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({
+        message: "Failed to get active product types",
+        error: error.message,
+      });
   }
 };

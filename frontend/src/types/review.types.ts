@@ -1,63 +1,29 @@
-export interface Review {
-  _id: string;
-  user:
-    | string
-    | {
-        _id: string;
-        name: string;
-        email: string;
-      };
-  product:
-    | string
-    | {
-        _id: string;
-        name: string;
-      };
+import type { BaseEntity } from "./common.types";
+
+export type Review = BaseEntity & {
+  userId: string;
+  productId: string;
   rating: number;
-  comment: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-}
+  comment?: string;
+  isActive: boolean;
+};
 
-export interface CreateReviewRequest {
-  product: string;
+export type CreateReviewRequest = {
+  productId: string;
   rating: number;
-  comment: string;
-}
+  comment?: string;
+};
 
-export interface CreateReviewResponse extends Review {}
-
-export interface UpdateReviewRequest {
+export type UpdateReviewRequest = {
   rating?: number;
   comment?: string;
-}
+  isActive?: boolean;
+};
 
-export interface UpdateReviewResponse extends Review {}
-
-export interface GetReviewsRequest {
+export type ReviewFilters = {
   product?: string;
   user?: string;
-  page?: number;
-  limit?: number;
-}
-
-export interface GetReviewsResponse {
-  reviews: Review[];
-  pagination: {
-    currentPage: number;
-    totalPages: number;
-    totalReviews: number;
-    limit: number;
-  };
-}
-
-export interface GetReviewByIdResponse extends Review {}
-
-export interface DeleteReviewResponse {
-  message: string;
-}
-
-export interface ReviewErrorResponse {
-  message: string;
-  error?: string;
-}
+  rating?: number;
+  sortBy?: "rating" | "createdAt";
+  sortOrder?: "asc" | "desc";
+};

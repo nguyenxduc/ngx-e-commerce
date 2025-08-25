@@ -1,12 +1,5 @@
 import Review from "../models/review.model.js";
 import Product from "../models/product.model.js";
-import {
-  successResponse,
-  errorResponse,
-  validationError,
-  notFoundError,
-  paginatedResponse,
-} from "../utils/response.js";
 
 export const createReview = async (req, res) => {
   try {
@@ -19,17 +12,20 @@ export const createReview = async (req, res) => {
       isActive: true,
     });
     if (existingReview) {
-      return validationError(res, "You have already reviewed this product");
+      return res
+        .status(400)
+        .json({ message: "You have already reviewed this product" });
     }
 
     const product = await Product.findById(productId);
-    if (!product) {
-      return notFoundError(res, "Product not found");
+    if (!product || !product.isActive) {
+      return res.status(404).json({ message: "Product not found" });
     }
 
-    // Validate rating
     if (rating < 1 || rating > 5) {
-      return validationError(res, "Rating must be between 1 and 5");
+      return res
+        .status(400)
+        .json({ message: "Rating must be between 1 and 5" });
     }
 
     const review = new Review({
@@ -41,7 +37,6 @@ export const createReview = async (req, res) => {
 
     const savedReview = await review.save();
 
-    // Update product ratings
     const avgRating = await Review.aggregate([
       { $match: { productId, isActive: true } },
       { $group: { _id: null, average: { $avg: "$rating" } } },
@@ -53,75 +48,47 @@ export const createReview = async (req, res) => {
       $push: { reviews: savedReview._id },
     });
 
-    return successResponse(
-      res,
-      savedReview,
-      "Review created successfully",
-      201
-    );
+    res.status(201).json({
+      message: "Review created successfully",
+      review: savedReview,
+    });
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to create review", error: error.message });
   }
 };
 
 export const getReviewsByProduct = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
     const reviews = await Review.find({
       productId: req.params.productId,
       isActive: true,
     })
       .populate("userId", "name avatar")
-      .skip(skip)
-      .limit(limit)
       .sort({ createdAt: -1 });
 
-    const total = await Review.countDocuments({
-      productId: req.params.productId,
-      isActive: true,
-    });
-
-    const pagination = {
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalReviews: total,
-      limit,
-    };
-
-    return paginatedResponse(res, reviews, pagination);
+    res.json(reviews);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get reviews", error: error.message });
   }
 };
 
 export const getReviewsByUser = async (req, res) => {
   try {
     const userId = req.user.id;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
 
     const reviews = await Review.find({ userId, isActive: true })
       .populate("productId", "name image")
-      .skip(skip)
-      .limit(limit)
       .sort({ createdAt: -1 });
 
-    const total = await Review.countDocuments({ userId, isActive: true });
-
-    const pagination = {
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalReviews: total,
-      limit,
-    };
-
-    return paginatedResponse(res, reviews, pagination);
+    res.json(reviews);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get user reviews", error: error.message });
   }
 };
 
@@ -131,17 +98,20 @@ export const updateReview = async (req, res) => {
     const userId = req.user.id;
 
     const review = await Review.findById(req.params.id);
-    if (!review) {
-      return notFoundError(res, "Review not found");
+    if (!review || !review.isActive) {
+      return res.status(404).json({ message: "Review not found" });
     }
 
     if (review.userId.toString() !== userId && req.user.role !== "admin") {
-      return validationError(res, "Not authorized to update this review");
+      return res
+        .status(403)
+        .json({ message: "Not authorized to update this review" });
     }
 
-    // Validate rating if provided
     if (rating && (rating < 1 || rating > 5)) {
-      return validationError(res, "Rating must be between 1 and 5");
+      return res
+        .status(400)
+        .json({ message: "Rating must be between 1 and 5" });
     }
 
     const updatedReview = await Review.findByIdAndUpdate(
@@ -150,7 +120,6 @@ export const updateReview = async (req, res) => {
       { new: true }
     );
 
-    // Update product ratings
     const avgRating = await Review.aggregate([
       { $match: { productId: review.productId, isActive: true } },
       { $group: { _id: null, average: { $avg: "$rating" } } },
@@ -160,9 +129,14 @@ export const updateReview = async (req, res) => {
       ratings: avgRating[0]?.average || 0,
     });
 
-    return successResponse(res, updatedReview, "Review updated successfully");
+    res.json({
+      message: "Review updated successfully",
+      review: updatedReview,
+    });
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to update review", error: error.message });
   }
 };
 
@@ -171,18 +145,18 @@ export const deleteReview = async (req, res) => {
     const userId = req.user.id;
 
     const review = await Review.findById(req.params.id);
-    if (!review) {
-      return notFoundError(res, "Review not found");
+    if (!review || !review.isActive) {
+      return res.status(404).json({ message: "Review not found" });
     }
 
     if (review.userId.toString() !== userId && req.user.role !== "admin") {
-      return validationError(res, "Not authorized to delete this review");
+      return res
+        .status(403)
+        .json({ message: "Not authorized to delete this review" });
     }
 
-    // Soft delete
     await Review.findByIdAndUpdate(req.params.id, { isActive: false });
 
-    // Update product ratings
     const avgRating = await Review.aggregate([
       { $match: { productId: review.productId, isActive: true } },
       { $group: { _id: null, average: { $avg: "$rating" } } },
@@ -197,9 +171,11 @@ export const deleteReview = async (req, res) => {
       $pull: { reviews: review._id },
     });
 
-    return successResponse(res, null, "Review deleted successfully");
+    res.json({ message: "Review deleted successfully" });
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to delete review", error: error.message });
   }
 };
 
@@ -209,41 +185,30 @@ export const getReviewById = async (req, res) => {
       .populate("userId", "name avatar")
       .populate("productId", "name image");
 
-    if (!review) {
-      return notFoundError(res, "Review not found");
+    if (!review || !review.isActive) {
+      return res.status(404).json({ message: "Review not found" });
     }
 
-    return successResponse(res, review);
+    res.json(review);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get review", error: error.message });
   }
 };
 
 export const getAllReviews = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
     const reviews = await Review.find({ isActive: true })
       .populate("userId", "name email")
       .populate("productId", "name")
-      .skip(skip)
-      .limit(limit)
       .sort({ createdAt: -1 });
 
-    const total = await Review.countDocuments({ isActive: true });
-
-    const pagination = {
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalReviews: total,
-      limit,
-    };
-
-    return paginatedResponse(res, reviews, pagination);
+    res.json(reviews);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get all reviews", error: error.message });
   }
 };
 
@@ -269,13 +234,15 @@ export const getProductReviewStats = async (req, res) => {
           .limit(5),
       ]);
 
-    return successResponse(res, {
+    res.json({
       totalReviews,
       averageRating: averageRating[0]?.average || 0,
       ratingDistribution,
       recentReviews,
     });
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get review stats", error: error.message });
   }
 };

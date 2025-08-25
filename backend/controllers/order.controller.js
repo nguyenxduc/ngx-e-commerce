@@ -2,13 +2,6 @@ import Order from "../models/order.model.js";
 import Cart from "../models/cart.model.js";
 import Product from "../models/product.model.js";
 import User from "../models/user.model.js";
-import {
-  successResponse,
-  errorResponse,
-  validationError,
-  notFoundError,
-  paginatedResponse,
-} from "../utils/response.js";
 
 export const createOrder = async (req, res) => {
   try {
@@ -21,7 +14,7 @@ export const createOrder = async (req, res) => {
     });
 
     if (!cart || cart.items.length === 0) {
-      return validationError(res, "Cart is empty");
+      return res.status(400).json({ message: "Cart is empty" });
     }
 
     const orderItems = [];
@@ -30,14 +23,15 @@ export const createOrder = async (req, res) => {
     for (const item of cart.items) {
       const product = item.product;
       if (!product.isActive) {
-        return validationError(res, `Product ${product.name} is not available`);
+        return res
+          .status(400)
+          .json({ message: `Product ${product.name} is not available` });
       }
 
       if (product.countInStock < item.quantity) {
-        return validationError(
-          res,
-          `Insufficient stock for ${product.name}. Available: ${product.countInStock}, Requested: ${item.quantity}`
-        );
+        return res.status(400).json({
+          message: `Insufficient stock for ${product.name}. Available: ${product.countInStock}, Requested: ${item.quantity}`,
+        });
       }
 
       orderItems.push({
@@ -76,14 +70,14 @@ export const createOrder = async (req, res) => {
       select: "name email",
     });
 
-    return successResponse(
-      res,
-      populatedOrder,
-      "Order created successfully",
-      201
-    );
+    res.status(201).json({
+      message: "Order created successfully",
+      order: populatedOrder,
+    });
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to create order", error: error.message });
   }
 };
 
@@ -102,90 +96,44 @@ export const getOrderById = async (req, res) => {
         select: "name image description",
       });
 
-    if (!order) {
-      return notFoundError(res, "Order not found");
+    if (!order || !order.isActive) {
+      return res.status(404).json({ message: "Order not found" });
     }
 
     if (order.user._id.toString() !== userId && req.user.role !== "admin") {
-      return validationError(res, "Not authorized to view this order");
+      return res
+        .status(403)
+        .json({ message: "Not authorized to view this order" });
     }
 
-    return successResponse(res, order);
+    res.json(order);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get order", error: error.message });
   }
 };
 
 export const getUserOrders = async (req, res) => {
   try {
     const userId = req.user.id;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const status = req.query.status;
-
-    const query = { user: userId };
-    if (status) {
-      query.status = status;
-    }
-
-    const total = await Order.countDocuments(query);
-    const orders = await Order.find(query)
-      .populate({
-        path: "items.product",
-        select: "name image",
-      })
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
-
-    const pagination = {
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit),
-    };
-
-    return paginatedResponse(res, orders, pagination);
+    const orders = await Order.find({ user: userId, isActive: true });
+    res.json(orders);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get user orders", error: error.message });
   }
 };
 
 export const getAllOrders = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const status = req.query.status;
-    const userId = req.query.userId;
-
-    const query = {};
-    if (status) query.status = status;
-    if (userId) query.user = userId;
-
-    const total = await Order.countDocuments(query);
-    const orders = await Order.find(query)
-      .populate({
-        path: "user",
-        select: "name email",
-      })
-      .populate({
-        path: "items.product",
-        select: "name image",
-      })
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(limit);
-
-    const pagination = {
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit),
-    };
-
-    return paginatedResponse(res, orders, pagination);
+    const orders = await Order.find({ isActive: true });
+    res.json(orders);
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to get all orders", error: error.message });
   }
 };
 
@@ -202,19 +150,20 @@ export const updateOrderStatus = async (req, res) => {
       "cancelled",
     ];
     if (!validStatuses.includes(status)) {
-      return validationError(res, "Invalid status");
+      return res.status(400).json({ message: "Invalid status" });
     }
 
     const order = await Order.findById(id);
-    if (!order) {
-      return notFoundError(res, "Order not found");
+    if (!order || !order.isActive) {
+      return res.status(404).json({ message: "Order not found" });
     }
 
     if (status === "cancelled" && order.status !== "pending") {
-      return validationError(res, "Cannot cancel order in current status");
+      return res
+        .status(400)
+        .json({ message: "Cannot cancel order in current status" });
     }
 
-    // If cancelling order, restore product stock
     if (status === "cancelled" && order.status === "pending") {
       for (const item of order.items) {
         await Product.findByIdAndUpdate(item.product, {
@@ -231,13 +180,14 @@ export const updateOrderStatus = async (req, res) => {
       select: "name email",
     });
 
-    return successResponse(
-      res,
-      updatedOrder,
-      "Order status updated successfully"
-    );
+    res.json({
+      message: "Order status updated successfully",
+      order: updatedOrder,
+    });
   } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to update order status", error: error.message });
   }
 };
 
@@ -247,81 +197,27 @@ export const deleteOrder = async (req, res) => {
 
     const order = await Order.findById(id);
     if (!order) {
-      return notFoundError(res, "Order not found");
+      return res.status(404).json({ message: "Order not found" });
     }
 
     if (order.status !== "pending") {
-      return validationError(res, "Cannot delete order in current status");
+      return res
+        .status(400)
+        .json({ message: "Cannot delete order in current status" });
     }
 
-    // Restore product stock when deleting pending order
     for (const item of order.items) {
       await Product.findByIdAndUpdate(item.product, {
         $inc: { countInStock: item.quantity },
       });
     }
 
-    await Order.findByIdAndDelete(id);
+    await Order.findByIdAndUpdate(id, { isActive: false });
 
-    return successResponse(res, null, "Order deleted successfully");
+    res.json({ message: "Order deleted successfully" });
   } catch (error) {
-    return errorResponse(res, error);
-  }
-};
-
-export const getOrderStats = async (req, res) => {
-  try {
-    const today = new Date();
-    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    const startOfYear = new Date(today.getFullYear(), 0, 1);
-
-    const [
-      totalOrders,
-      totalRevenue,
-      monthlyOrders,
-      monthlyRevenue,
-      yearlyOrders,
-      yearlyRevenue,
-      statusCounts,
-    ] = await Promise.all([
-      Order.countDocuments(),
-      Order.aggregate([
-        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-      ]),
-      Order.countDocuments({ createdAt: { $gte: startOfMonth } }),
-      Order.aggregate([
-        { $match: { createdAt: { $gte: startOfMonth } } },
-        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-      ]),
-      Order.countDocuments({ createdAt: { $gte: startOfYear } }),
-      Order.aggregate([
-        { $match: { createdAt: { $gte: startOfYear } } },
-        { $group: { _id: null, total: { $sum: "$totalAmount" } } },
-      ]),
-      Order.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
-    ]);
-
-    const stats = {
-      total: {
-        orders: totalOrders,
-        revenue: totalRevenue[0]?.total || 0,
-      },
-      monthly: {
-        orders: monthlyOrders,
-        revenue: monthlyRevenue[0]?.total || 0,
-      },
-      yearly: {
-        orders: yearlyOrders,
-        revenue: yearlyRevenue[0]?.total || 0,
-      },
-      statusBreakdown: statusCounts.reduce((acc, item) => {
-        acc[item._id] = item.count;
-        return acc;
-      }, {}),
-    };
-
-    return successResponse(res, stats);
-  } catch (error) {
-    return errorResponse(res, error);
+    res
+      .status(500)
+      .json({ message: "Failed to delete order", error: error.message });
   }
 };

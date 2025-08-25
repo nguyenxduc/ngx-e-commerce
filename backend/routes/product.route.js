@@ -24,7 +24,7 @@ router.get("/shop/:shopId", getProductsByShop);
 router.get("/:id", getProductById);
 
 // Protected routes - require authentication and product ownership
-router.post("/", protectRoute, createProduct);
+router.post("/", protectRoute, productOwnerRoute, createProduct);
 router.put("/:id", protectRoute, productOwnerRoute, updateProduct);
 router.delete("/:id", protectRoute, productOwnerRoute, deleteProduct);
 router.post(

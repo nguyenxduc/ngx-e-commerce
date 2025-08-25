@@ -1,63 +1,38 @@
-export interface WishlistItem {
-  _id: string;
-  product:
-    | string
-    | {
-        _id: string;
-        name: string;
-        price: number;
-        image: string;
-        description: string;
-      };
-  user: string;
-  createdAt?: Date;
-}
+import type { BaseEntity } from "./common.types";
 
-export interface Wishlist {
-  _id: string;
+export type WishlistItem = {
+  product: string;
+  addedAt: string;
+};
+
+export type Wishlist = BaseEntity & {
   user: string;
   items: WishlistItem[];
-  createdAt?: Date;
-  updatedAt?: Date;
-}
+};
 
-export interface AddToWishlistRequest {
-  product: string;
-}
+export type WishlistWithProducts = Omit<Wishlist, "items"> & {
+  items: WishlistItemWithProduct[];
+};
 
-export interface AddToWishlistResponse {
-  message: string;
-  wishlist: Wishlist;
-}
-
-export interface RemoveFromWishlistRequest {
-  product: string;
-}
-
-export interface RemoveFromWishlistResponse {
-  message: string;
-}
-
-export interface GetWishlistRequest {
-  page?: number;
-  limit?: number;
-}
-
-export interface GetWishlistResponse {
-  items: WishlistItem[];
-  pagination: {
-    currentPage: number;
-    totalPages: number;
-    totalItems: number;
-    limit: number;
+export type WishlistItemWithProduct = WishlistItem & {
+  product: {
+    _id: string;
+    name: string;
+    price: number;
+    image: string;
+    rating: number;
+    countInStock: number;
+    isActive: boolean;
+    description: string;
   };
-}
+};
 
-export interface ClearWishlistResponse {
-  message: string;
-}
+export type AddToWishlistRequest = {
+  productId: string;
+};
 
-export interface WishlistErrorResponse {
-  message: string;
-  error?: string;
-}
+export type WishlistResponse = {
+  id: string;
+  items: WishlistItemWithProduct[];
+  totalItems: number;
+};
