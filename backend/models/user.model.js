@@ -25,10 +25,7 @@ const userSchema = new mongoose.Schema(
       enum: ["customer", "admin"],
       default: "customer",
     },
-    shop: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Shop",
-    },
+
     avatar: {
       type: String,
       default: "",
@@ -37,6 +34,70 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    resetPasswordToken: {
+      type: String,
+    },
+
+    resetPasswordExpires: {
+      type: Date,
+    },
+
+    wishlist: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+      },
+    ],
+
+    cart: [
+      {
+        product: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Product",
+        },
+        quantity: {
+          type: Number,
+          required: true,
+          min: [1, "Quantity must be at least 1"],
+          default: 1,
+        },
+      },
+    ],
+
+    address: {
+      street: { type: String, default: "" },
+      city: { type: String, default: "" },
+      state: { type: String, default: "" },
+      postalCode: { type: String, default: "" },
+      country: { type: String, default: "" },
+    },
+
+    orders: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Order",
+      },
+    ],
+
+    reviews: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Review",
+      },
+    ],
+
+    
   },
   {
     timestamps: true,
