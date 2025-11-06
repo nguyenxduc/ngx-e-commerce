@@ -1,6 +1,24 @@
 import { prisma } from "../lib/db.js";
 import cloudinary from "../lib/cloudinary.js";
 
+// Helper function to calculate final_price and discount_percentage
+const calculateProductPrices = (product) => {
+  const price = Number(product.price);
+  const discount = Number(product.discount || 0);
+  const final_price = price - discount;
+  const discount_percentage =
+    price > 0 ? Math.round((discount / price) * 100) : 0;
+
+  return {
+    ...product,
+    price,
+    discount,
+    final_price,
+    discount_percentage,
+    rating: product.rating ? Number(product.rating) : 0,
+  };
+};
+
 export const createProduct = async (req, res) => {
   try {
     const {
@@ -53,6 +71,20 @@ export const createProduct = async (req, res) => {
 
 export const getAllProducts = async (req, res) => {
   try {
+    // Standard query parameters (not filters)
+    const standardParams = [
+      "search",
+      "category_id",
+      "sub_category_id",
+      "in_stock",
+      "price_min",
+      "price_max",
+      "discount",
+      "sort",
+      "page",
+      "limit",
+    ];
+
     const {
       search,
       category_id,
@@ -65,6 +97,14 @@ export const getAllProducts = async (req, res) => {
       page = 1,
       limit = 20,
     } = req.query;
+
+    // Extract all filter parameters (everything except standard params)
+    const filterParams = {};
+    Object.keys(req.query).forEach((key) => {
+      if (!standardParams.includes(key) && req.query[key]) {
+        filterParams[key] = req.query[key];
+      }
+    });
 
     const where = {};
     if (search) where.name = { contains: String(search), mode: "insensitive" };
@@ -88,18 +128,184 @@ export const getAllProducts = async (req, res) => {
     const skip = (Number(page) - 1) * Number(limit);
     const take = Number(limit);
 
-    const [total, products] = await Promise.all([
-      prisma.product.count({ where }),
-      prisma.product.findMany({ where, orderBy, skip, take }),
-    ]);
+    // Get all products first (before filtering by specs)
+    // Note: We fetch all products because Prisma doesn't easily support filtering JSON array fields
+    const allProducts = await prisma.product.findMany({ where, orderBy });
+
+    // If no filter parameters, return paginated results directly
+    if (Object.keys(filterParams).length === 0) {
+      const total = allProducts.length;
+      const paginatedProducts = allProducts.slice(skip, skip + take);
+      const productsWithCalculations = paginatedProducts.map(
+        calculateProductPrices
+      );
+
+      return res.json({
+        products: productsWithCalculations,
+        pagination: {
+          current_page: Number(page),
+          per_page: Number(limit),
+          total_count: total,
+          total_pages: Math.ceil(total / Number(limit)),
+        },
+      });
+    }
+
+    // Fetch FilterOptions to build dynamic filter mapping
+    // Get active filter options (both global and category-specific if category_id exists)
+    const filterOptionWhere = {
+      is_active: true,
+    };
+
+    if (category_id) {
+      filterOptionWhere.OR = [
+        { category_id: null }, // Global filters
+        { category_id: BigInt(category_id) }, // Category-specific filters
+      ];
+    } else {
+      filterOptionWhere.category_id = null; // Only global filters
+    }
+
+    const filterOptions = await prisma.filterOption.findMany({
+      where: filterOptionWhere,
+      select: {
+        key: true,
+        label: true,
+        value: true,
+      },
+    });
+
+    // Build a map of filter keys to their possible labels/keys
+    // This allows flexible matching (e.g., "brand" can match "Brand", "brand", etc.)
+    const filterKeyMap = new Map();
+    filterOptions.forEach((option) => {
+      const key = option.key.toLowerCase();
+      if (!filterKeyMap.has(key)) {
+        filterKeyMap.set(key, {
+          keys: new Set([key, option.key.toLowerCase()]),
+          labels: new Set([option.label?.toLowerCase()]),
+        });
+      } else {
+        const existing = filterKeyMap.get(key);
+        existing.keys.add(key);
+        existing.keys.add(option.key.toLowerCase());
+        if (option.label) {
+          existing.labels.add(option.label.toLowerCase());
+        }
+      }
+    });
+
+    // Helper function to check if a product matches filter values
+    const matchesFilter = (product, queryKey, filterValues) => {
+      if (!filterValues || filterValues.length === 0) return true;
+
+      const values = Array.isArray(filterValues)
+        ? filterValues
+        : String(filterValues)
+            .split(",")
+            .map((v) => v.trim())
+            .filter((v) => v.length > 0);
+
+      if (values.length === 0) return true;
+
+      // Find matching filter keys from FilterOption table
+      const queryKeyLower = String(queryKey).toLowerCase();
+      const matchingKeys = [];
+
+      // Check if queryKey matches any filter option key
+      filterKeyMap.forEach((data, filterKey) => {
+        if (
+          filterKey === queryKeyLower ||
+          data.keys.has(queryKeyLower) ||
+          Array.from(data.labels).some((label) => label === queryKeyLower)
+        ) {
+          matchingKeys.push(filterKey);
+          // Also add all variations
+          data.keys.forEach((k) => matchingKeys.push(k));
+          data.labels.forEach((l) => matchingKeys.push(l));
+        }
+      });
+
+      // If no matching filter option found, try direct match with queryKey
+      if (matchingKeys.length === 0) {
+        matchingKeys.push(queryKeyLower);
+      }
+
+      // Check in specs array
+      const specs = Array.isArray(product.specs) ? product.specs : [];
+      const specsMatch = specs.some((spec) => {
+        const label = String(spec.label || "").toLowerCase();
+        const value = String(spec.value || "").toLowerCase();
+        const key = String(spec.key || "").toLowerCase();
+
+        // Check if label/key matches any of the matching keys
+        const keyMatch =
+          matchingKeys.some((mk) => mk === label || mk === key) ||
+          label === queryKeyLower ||
+          key === queryKeyLower;
+
+        if (keyMatch) {
+          return values.some(
+            (fv) =>
+              value === String(fv).toLowerCase() ||
+              value.includes(String(fv).toLowerCase())
+          );
+        }
+        return false;
+      });
+
+      // Check in specs_detail array
+      const specsDetail = Array.isArray(product.specs_detail)
+        ? product.specs_detail
+        : [];
+      const specsDetailMatch = specsDetail.some((spec) => {
+        const label = String(spec.label || "").toLowerCase();
+        const value = String(spec.value || "").toLowerCase();
+        const key = String(spec.key || "").toLowerCase();
+
+        const keyMatch =
+          matchingKeys.some((mk) => mk === label || mk === key) ||
+          label === queryKeyLower ||
+          key === queryKeyLower;
+
+        if (keyMatch) {
+          return values.some(
+            (fv) =>
+              value === String(fv).toLowerCase() ||
+              value.includes(String(fv).toLowerCase())
+          );
+        }
+        return false;
+      });
+
+      return specsMatch || specsDetailMatch;
+    };
+
+    // Apply filters dynamically
+    let filteredProducts = allProducts;
+    Object.keys(filterParams).forEach((queryKey) => {
+      const filterValue = filterParams[queryKey];
+      filteredProducts = filteredProducts.filter((p) =>
+        matchesFilter(p, queryKey, filterValue)
+      );
+    });
+
+    // Apply pagination after filtering
+    const total = filteredProducts.length;
+    const paginatedProducts = filteredProducts.slice(skip, skip + take);
+
+    // Calculate final_price and discount_percentage for each product
+    const productsWithCalculations = paginatedProducts.map(
+      calculateProductPrices
+    );
 
     res.json({
-      products,
+      products: productsWithCalculations,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.ceil(total / Number(limit)),
+        current_page: Number(page),
+        per_page: Number(limit),
+        total_count: total,
+        total_pages: Math.ceil(total / Number(limit)),
       },
     });
   } catch (error) {
@@ -117,10 +323,10 @@ export const getProductById = async (req, res) => {
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
-    const final_price = Number(product.price) - Number(product.discount || 0);
+    const productWithCalculations = calculateProductPrices(product);
     const in_stock = Number(product.quantity) > 0;
     const available_colors = Array.isArray(product.color) ? product.color : [];
-    res.json({ ...product, final_price, in_stock, available_colors });
+    res.json({ ...productWithCalculations, in_stock, available_colors });
   } catch (error) {
     res
       .status(500)
@@ -192,13 +398,16 @@ export const searchProducts = async (req, res) => {
       },
       orderBy: { created_at: "desc" },
     });
+
+    const productsWithCalculations = products.map(calculateProductPrices);
+
     res.json({
-      products,
+      products: productsWithCalculations,
       pagination: {
-        page: 1,
-        limit: products.length,
-        total: products.length,
-        pages: 1,
+        current_page: 1,
+        per_page: products.length,
+        total_count: products.length,
+        total_pages: 1,
       },
     });
   } catch (error) {
@@ -214,13 +423,16 @@ export const getProductsByCategory = async (req, res) => {
       where: { category_id: BigInt(req.params.categoryId) },
       orderBy: { created_at: "desc" },
     });
+
+    const productsWithCalculations = products.map(calculateProductPrices);
+
     res.json({
-      products,
+      products: productsWithCalculations,
       pagination: {
-        page: 1,
-        limit: products.length,
-        total: products.length,
-        pages: 1,
+        current_page: 1,
+        per_page: products.length,
+        total_count: products.length,
+        total_pages: 1,
       },
     });
   } catch (error) {

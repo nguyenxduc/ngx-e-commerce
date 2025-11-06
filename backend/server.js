@@ -17,6 +17,7 @@ import customerRoutes from "./routes/customer.route.js";
 import categoryRoutes from "./routes/category.route.js";
 import subCategoryRoutes from "./routes/subCategory.route.js";
 import wishlistRoutes from "./routes/wishlist.route.js";
+import filterRoutes from "./routes/filter.route.js";
 
 import cors from "cors";
 
@@ -49,6 +50,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/sub-categories", subCategoryRoutes);
+app.use("/api/filter", filterRoutes);
 
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

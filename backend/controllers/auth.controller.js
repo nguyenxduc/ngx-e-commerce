@@ -3,13 +3,19 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/db.js";
 
 const generateAccessToken = (userId) => {
-  return jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, {
+  const secret =
+    process.env.ACCESS_TOKEN_SECRET ||
+    "your-access-token-secret-key-change-in-production";
+  return jwt.sign({ userId }, secret, {
     expiresIn: "15m",
   });
 };
 
 const generateRefreshToken = (userId) => {
-  return jwt.sign({ userId }, process.env.REFRESH_TOKEN_SECRET, {
+  const secret =
+    process.env.REFRESH_TOKEN_SECRET ||
+    "your-refresh-token-secret-key-change-in-production";
+  return jwt.sign({ userId }, secret, {
     expiresIn: "7d",
   });
 };
@@ -183,7 +189,10 @@ export const refreshToken = (req, res) => {
       });
     }
 
-    const decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+    const secret =
+      process.env.REFRESH_TOKEN_SECRET ||
+      "your-refresh-token-secret-key-change-in-production";
+    const decoded = jwt.verify(token, secret);
     const newAccessToken = generateAccessToken(decoded.userId);
 
     res.status(200).json({
@@ -207,6 +216,14 @@ export const refreshToken = (req, res) => {
 
 export const getProfile = async (req, res) => {
   try {
+    // Check if req.user exists (middleware might not be active)
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized - User not authenticated",
+      });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: BigInt(req.user.id) },
     });
@@ -311,12 +328,10 @@ export const changePassword = async (req, res) => {
         .json({ success: false, error: "Current password incorrect" });
 
     if (new_password.length < 6) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "New password must be at least 6 characters",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "New password must be at least 6 characters",
+      });
     }
 
     const hashed = await bcrypt.hash(new_password, 10);

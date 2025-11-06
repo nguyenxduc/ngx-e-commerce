@@ -33,6 +33,7 @@ model Category {
   // relations
   sub_categories SubCategory[]
   products       Product[]
+  filter_options FilterOption[]
 
   @@map("categories")
 }
@@ -227,4 +228,22 @@ model Coupon {
   users  User[] @relation("UserCoupons")
 
   @@map("coupons")
+}
+
+model FilterOption {
+  id          BigInt   @id @default(autoincrement())
+  key         String   // 'brand', 'ram', 'screen_size', etc.
+  label       String   // Display name: 'Brand', 'RAM', etc.
+  value       String   // Actual value: 'Apple', '8GB', etc.
+  category_id BigInt?  // Optional: filter by category
+  order       Int      @default(0) // Display order
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  category Category? @relation(fields: [category_id], references: [id])
+
+  @@unique([key, value, category_id])
+  @@index([key, category_id])
+  @@map("filter_options")
 }

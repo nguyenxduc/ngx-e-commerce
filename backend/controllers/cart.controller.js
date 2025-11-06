@@ -57,10 +57,85 @@ export const getCartProducts = async (req, res) => {
   try {
     const userId = req.user.id;
     const cart = await prisma.cart.findFirst({ where: { user_id: BigInt(userId) } });
-    if (!cart) return res.json([]);
-    const items = await prisma.cartItem.findMany({ where: { cart_id: cart.id }, include: { product: true } });
+    if (!cart) {
+      return res.json({ 
+        cart: { 
+          id: null, 
+          total_items: 0, 
+          total_price: 0, 
+          total_original_price: 0, 
+          total_discount: 0, 
+          items: [] 
+        } 
+      });
+    }
+    
+    const items = await prisma.cartItem.findMany({ 
+      where: { cart_id: cart.id }, 
+      include: { product: true } 
+    });
+    
     const summary = await summarizeCart(cart.id);
-    res.json({ cart: { id: cart.id, total_items: summary.total_items, total_price: summary.total_price, total_original_price: summary.total_original_price, total_discount: summary.total_discount, items } });
+    
+    // Format items to match frontend CartItem type
+    const formattedItems = items.map(item => {
+      const product = item.product;
+      const price = Number(product.price);
+      const discount = Number(product.discount || 0);
+      const finalPrice = price - discount;
+      const unitFinalPrice = finalPrice;
+      const subtotal = finalPrice * item.quantity;
+      
+      // Get first image from product.img array
+      const imageUrl = Array.isArray(product.img) && product.img.length > 0 
+        ? product.img[0] 
+        : '';
+      
+      // Parse color from cartItem.color (can be string or object)
+      let colorObj = { name: '', code: '' };
+      if (item.color) {
+        if (typeof item.color === 'string') {
+          // If color is a string, try to parse it
+          try {
+            colorObj = JSON.parse(item.color);
+          } catch {
+            colorObj = { name: item.color, code: '' };
+          }
+        } else if (typeof item.color === 'object') {
+          colorObj = item.color;
+        }
+      }
+      
+      return {
+        id: Number(item.id),
+        product_id: Number(item.product_id),
+        name: product.name || '',
+        price: price,
+        final_price: finalPrice,
+        discount: discount,
+        subtotal: subtotal,
+        unit_final_price: unitFinalPrice,
+        image_url: imageUrl,
+        sold_quantity: item.quantity,
+        max_quantity: Number(product.quantity || 0),
+        quantity: item.quantity,
+        color: {
+          code: colorObj.code || '',
+          name: colorObj.name || ''
+        }
+      };
+    });
+    
+    res.json({ 
+      cart: { 
+        id: Number(cart.id), 
+        total_items: summary.total_items, 
+        total_price: summary.total_price, 
+        total_original_price: summary.total_original_price, 
+        total_discount: summary.total_discount, 
+        items: formattedItems 
+      } 
+    });
   } catch (error) {
     res
       .status(500)
