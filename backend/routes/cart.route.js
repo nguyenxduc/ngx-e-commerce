@@ -10,9 +10,13 @@ import { protectRoute } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
+// Specified routes
 router.get("/", protectRoute, getCartProducts);
-router.post("/", protectRoute, addToCart);
-router.delete("/", protectRoute, removeAllFromCart);
-router.put("/:id", protectRoute, updateQuantity);
-router.delete("/:id", protectRoute, deleteCartItem);
+router.post("/add_item/:product_id", protectRoute, addToCart);
+router.put("/update_item/:product_id", protectRoute, updateQuantity);
+router.delete("/remove_item/:product_id", protectRoute, deleteCartItem);
+router.delete("/clear", protectRoute, removeAllFromCart);
+
 export default router;
+
+

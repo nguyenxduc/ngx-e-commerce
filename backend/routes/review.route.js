@@ -13,7 +13,7 @@ import { protectRoute, adminRoute } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-// Public routes
+// Public routes (legacy)
 router.get("/product/:productId", getReviewsByProduct);
 router.get("/product/:productId/stats", getProductReviewStats);
 router.get("/:id", getReviewById);

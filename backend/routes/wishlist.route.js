@@ -15,3 +15,5 @@ router.delete("/remove/:productId", protectRoute, removeFromWishlist);
 router.delete("/clear", protectRoute, clearWishlist);
 
 export default router;
+
+

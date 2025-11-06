@@ -1,15 +1,12 @@
-import Review from "../models/review.model.js";
-import Product from "../models/product.model.js";
+import { prisma } from "../lib/db.js";
 
 export const createReview = async (req, res) => {
   try {
     const { productId, rating, comment } = req.body;
     const userId = req.user.id;
 
-    const existingReview = await Review.findOne({
-      userId,
-      productId,
-      isActive: true,
+    const existingReview = await prisma.review.findFirst({
+      where: { user_id: BigInt(userId), product_id: BigInt(productId) },
     });
     if (existingReview) {
       return res
@@ -17,8 +14,8 @@ export const createReview = async (req, res) => {
         .json({ message: "You have already reviewed this product" });
     }
 
-    const product = await Product.findById(productId);
-    if (!product || !product.isActive) {
+    const product = await prisma.product.findUnique({ where: { id: BigInt(productId) } });
+    if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
 
@@ -28,24 +25,24 @@ export const createReview = async (req, res) => {
         .json({ message: "Rating must be between 1 and 5" });
     }
 
-    const review = new Review({
-      userId,
-      productId,
-      rating,
-      comment,
+    const savedReview = await prisma.review.create({
+      data: {
+        user_id: BigInt(userId),
+        product_id: BigInt(productId),
+        rating,
+        comment,
+      },
     });
 
-    const savedReview = await review.save();
+    const agg = await prisma.review.aggregate({
+      where: { product_id: BigInt(productId) },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
 
-    const avgRating = await Review.aggregate([
-      { $match: { productId, isActive: true } },
-      { $group: { _id: null, average: { $avg: "$rating" } } },
-    ]);
-
-    await Product.findByIdAndUpdate(productId, {
-      ratings: avgRating[0]?.average || 0,
-      numReviews: await Review.countDocuments({ productId, isActive: true }),
-      $push: { reviews: savedReview._id },
+    await prisma.product.update({
+      where: { id: BigInt(productId) },
+      data: { rating: agg._avg.rating ?? 0 },
     });
 
     res.status(201).json({
@@ -61,14 +58,27 @@ export const createReview = async (req, res) => {
 
 export const getReviewsByProduct = async (req, res) => {
   try {
-    const reviews = await Review.find({
-      productId: req.params.productId,
-      isActive: true,
-    })
-      .populate("userId", "name avatar")
-      .sort({ createdAt: -1 });
+    const { page = 1, limit = 10 } = req.query;
+    const pid = BigInt(req.params.productId);
+    const skip = (Number(page) - 1) * Number(limit);
+    const take = Number(limit);
+    const [total, reviews, agg] = await Promise.all([
+      prisma.review.count({ where: { product_id: pid } }),
+      prisma.review.findMany({
+        where: { product_id: pid },
+        orderBy: { created_at: "desc" },
+        include: { user: { select: { id: true, name: true } } },
+        skip,
+        take,
+      }),
+      prisma.review.aggregate({ where: { product_id: pid }, _avg: { rating: true } }),
+    ]);
 
-    res.json(reviews);
+    res.json({
+      reviews,
+      pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / Number(limit)) },
+      summary: { average_rating: agg._avg.rating || 0, total_reviews: total },
+    });
   } catch (error) {
     res
       .status(500)
@@ -80,9 +90,11 @@ export const getReviewsByUser = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const reviews = await Review.find({ userId, isActive: true })
-      .populate("productId", "name image")
-      .sort({ createdAt: -1 });
+    const reviews = await prisma.review.findMany({
+      where: { user_id: BigInt(userId) },
+      orderBy: { created_at: "desc" },
+      include: { product: { select: { id: true, name: true, img: true } } },
+    });
 
     res.json(reviews);
   } catch (error) {
@@ -97,12 +109,12 @@ export const updateReview = async (req, res) => {
     const { rating, comment } = req.body;
     const userId = req.user.id;
 
-    const review = await Review.findById(req.params.id);
-    if (!review || !review.isActive) {
+    const review = await prisma.review.findUnique({ where: { id: BigInt(req.params.id) } });
+    if (!review) {
       return res.status(404).json({ message: "Review not found" });
     }
 
-    if (review.userId.toString() !== userId && req.user.role !== "admin") {
+    if (review.user_id.toString() !== userId && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Not authorized to update this review" });
@@ -114,19 +126,18 @@ export const updateReview = async (req, res) => {
         .json({ message: "Rating must be between 1 and 5" });
     }
 
-    const updatedReview = await Review.findByIdAndUpdate(
-      req.params.id,
-      { rating, comment },
-      { new: true }
-    );
+    const updatedReview = await prisma.review.update({
+      where: { id: BigInt(req.params.id) },
+      data: { rating: rating ?? undefined, comment: comment ?? undefined },
+    });
 
-    const avgRating = await Review.aggregate([
-      { $match: { productId: review.productId, isActive: true } },
-      { $group: { _id: null, average: { $avg: "$rating" } } },
-    ]);
-
-    await Product.findByIdAndUpdate(review.productId, {
-      ratings: avgRating[0]?.average || 0,
+    const agg = await prisma.review.aggregate({
+      where: { product_id: review.product_id },
+      _avg: { rating: true },
+    });
+    await prisma.product.update({
+      where: { id: review.product_id },
+      data: { rating: agg._avg.rating ?? 0 },
     });
 
     res.json({
@@ -144,31 +155,27 @@ export const deleteReview = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const review = await Review.findById(req.params.id);
-    if (!review || !review.isActive) {
+    const review = await prisma.review.findUnique({ where: { id: BigInt(req.params.id) } });
+    if (!review) {
       return res.status(404).json({ message: "Review not found" });
     }
 
-    if (review.userId.toString() !== userId && req.user.role !== "admin") {
+    if (review.user_id.toString() !== userId && req.user.role !== "admin") {
       return res
         .status(403)
         .json({ message: "Not authorized to delete this review" });
     }
 
-    await Review.findByIdAndUpdate(req.params.id, { isActive: false });
+    await prisma.review.delete({ where: { id: BigInt(req.params.id) } });
 
-    const avgRating = await Review.aggregate([
-      { $match: { productId: review.productId, isActive: true } },
-      { $group: { _id: null, average: { $avg: "$rating" } } },
-    ]);
-
-    await Product.findByIdAndUpdate(review.productId, {
-      ratings: avgRating[0]?.average || 0,
-      numReviews: await Review.countDocuments({
-        productId: review.productId,
-        isActive: true,
-      }),
-      $pull: { reviews: review._id },
+    const agg = await prisma.review.aggregate({
+      where: { product_id: review.product_id },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
+    await prisma.product.update({
+      where: { id: review.product_id },
+      data: { rating: agg._avg.rating ?? 0 },
     });
 
     res.json({ message: "Review deleted successfully" });
@@ -181,11 +188,15 @@ export const deleteReview = async (req, res) => {
 
 export const getReviewById = async (req, res) => {
   try {
-    const review = await Review.findById(req.params.id)
-      .populate("userId", "name avatar")
-      .populate("productId", "name image");
+    const review = await prisma.review.findUnique({
+      where: { id: BigInt(req.params.id) },
+      include: {
+        user: { select: { id: true, name: true } },
+        product: { select: { id: true, name: true, img: true } },
+      },
+    });
 
-    if (!review || !review.isActive) {
+    if (!review) {
       return res.status(404).json({ message: "Review not found" });
     }
 
@@ -199,10 +210,13 @@ export const getReviewById = async (req, res) => {
 
 export const getAllReviews = async (req, res) => {
   try {
-    const reviews = await Review.find({ isActive: true })
-      .populate("userId", "name email")
-      .populate("productId", "name")
-      .sort({ createdAt: -1 });
+    const reviews = await prisma.review.findMany({
+      orderBy: { created_at: "desc" },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        product: { select: { id: true, name: true } },
+      },
+    });
 
     res.json(reviews);
   } catch (error) {
@@ -215,28 +229,33 @@ export const getAllReviews = async (req, res) => {
 export const getProductReviewStats = async (req, res) => {
   try {
     const { productId } = req.params;
+    const pid = BigInt(productId);
 
-    const [totalReviews, averageRating, ratingDistribution, recentReviews] =
-      await Promise.all([
-        Review.countDocuments({ productId, isActive: true }),
-        Review.aggregate([
-          { $match: { productId, isActive: true } },
-          { $group: { _id: null, average: { $avg: "$rating" } } },
-        ]),
-        Review.aggregate([
-          { $match: { productId, isActive: true } },
-          { $group: { _id: "$rating", count: { $sum: 1 } } },
-          { $sort: { _id: -1 } },
-        ]),
-        Review.find({ productId, isActive: true })
-          .populate("userId", "name avatar")
-          .sort({ createdAt: -1 })
-          .limit(5),
-      ]);
+    const [agg, recentReviews] = await Promise.all([
+      prisma.review.aggregate({
+        where: { product_id: pid },
+        _avg: { rating: true },
+        _count: { rating: true },
+      }),
+      prisma.review.findMany({
+        where: { product_id: pid },
+        orderBy: { created_at: "desc" },
+        take: 5,
+        include: { user: { select: { id: true, name: true } } },
+      }),
+    ]);
+
+    // rating distribution (1-5)
+    const distribution = {};
+    const all = await prisma.review.findMany({ where: { product_id: pid }, select: { rating: true } });
+    for (const r of all) distribution[r.rating] = (distribution[r.rating] || 0) + 1;
+    const ratingDistribution = Object.keys(distribution)
+      .map((k) => ({ rating: Number(k), count: distribution[k] }))
+      .sort((a, b) => b.rating - a.rating);
 
     res.json({
-      totalReviews,
-      averageRating: averageRating[0]?.average || 0,
+      totalReviews: agg._count.rating || 0,
+      averageRating: agg._avg.rating || 0,
       ratingDistribution,
       recentReviews,
     });

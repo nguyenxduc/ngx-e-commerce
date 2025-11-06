@@ -1,30 +1,25 @@
-import Coupon from "../models/coupon.model.js";
+import { prisma } from "../lib/db.js";
 
 export const createCoupon = async (req, res) => {
   try {
-    const {
-      code,
-      discountPercentage,
-      expirationDate,
-      isActive = true,
-    } = req.body;
+    const { code, description, discount_type = "percent", discount_value, min_order, usage_limit = 1, expires_at } = req.body;
 
-    const existingCoupon = await Coupon.findOne({
-      code,
-      isActive: true,
-    });
+    const existingCoupon = await prisma.coupon.findUnique({ where: { code } });
     if (existingCoupon) {
       return res.status(400).json({ message: "Coupon code already exists" });
     }
 
-    const coupon = new Coupon({
-      code,
-      discountPercentage,
-      expirationDate,
-      isActive,
+    const savedCoupon = await prisma.coupon.create({
+      data: {
+        code,
+        description,
+        discount_type,
+        discount_value,
+        min_order,
+        usage_limit,
+        expires_at: expires_at ? new Date(expires_at) : null,
+      },
     });
-
-    const savedCoupon = await coupon.save();
     res.status(201).json({
       message: "Coupon created successfully",
       coupon: savedCoupon,
@@ -40,27 +35,30 @@ export const validateCoupon = async (req, res) => {
   try {
     const { code, amount } = req.body;
 
-    const coupon = await Coupon.findOne({
-      code,
-      isActive: true,
-    });
+    const coupon = await prisma.coupon.findUnique({ where: { code } });
     if (!coupon) {
       return res.status(404).json({ message: "Invalid coupon code" });
     }
 
     const now = new Date();
-    if (now > coupon.expirationDate) {
+    if (coupon.expires_at && now > coupon.expires_at) {
       return res.status(400).json({ message: "Coupon has expired" });
     }
+    if (coupon.usage_limit !== null && coupon.used_count !== null && coupon.used_count >= coupon.usage_limit) {
+      return res.status(400).json({ message: "Coupon usage limit reached" });
+    }
+    if (coupon.min_order && Number(amount) < Number(coupon.min_order)) {
+      return res.status(400).json({ message: "Order does not meet minimum amount" });
+    }
 
-    const discount = (amount * coupon.discountPercentage) / 100;
+    let discount = 0;
+    if (coupon.discount_type === "percent") {
+      discount = (Number(amount) * Number(coupon.discount_value)) / 100;
+    } else {
+      discount = Number(coupon.discount_value);
+    }
 
-    res.json({
-      valid: true,
-      coupon,
-      discount,
-      finalAmount: amount - discount,
-    });
+    res.json({ valid: true, coupon, discount, finalAmount: Number(amount) - discount });
   } catch (error) {
     res
       .status(500)
@@ -70,7 +68,7 @@ export const validateCoupon = async (req, res) => {
 
 export const getAllCoupons = async (req, res) => {
   try {
-    const coupons = await Coupon.find({ isActive: true });
+    const coupons = await prisma.coupon.findMany({ orderBy: { created_at: "desc" } });
     res.json(coupons);
   } catch (error) {
     res
@@ -81,8 +79,8 @@ export const getAllCoupons = async (req, res) => {
 
 export const getCouponById = async (req, res) => {
   try {
-    const coupon = await Coupon.findById(req.params.id);
-    if (!coupon || !coupon.isActive) {
+    const coupon = await prisma.coupon.findUnique({ where: { id: BigInt(req.params.id) } });
+    if (!coupon) {
       return res.status(404).json({ message: "Coupon not found" });
     }
 
@@ -96,38 +94,32 @@ export const getCouponById = async (req, res) => {
 
 export const updateCoupon = async (req, res) => {
   try {
-    const { code, discountPercentage, expirationDate, isActive } = req.body;
+    const { code, description, discount_type, discount_value, min_order, usage_limit, expires_at } = req.body;
 
-    const coupon = await Coupon.findById(req.params.id);
-    if (!coupon || !coupon.isActive) {
+    const coupon = await prisma.coupon.findUnique({ where: { id: BigInt(req.params.id) } });
+    if (!coupon) {
       return res.status(404).json({ message: "Coupon not found" });
     }
 
     if (code && code !== coupon.code) {
-      const existingCoupon = await Coupon.findOne({
-        code,
-        isActive: true,
-      });
-      if (existingCoupon) {
-        return res.status(400).json({ message: "Coupon code already exists" });
-      }
+      const exists = await prisma.coupon.findUnique({ where: { code } });
+      if (exists) return res.status(400).json({ message: "Coupon code already exists" });
     }
 
-    const updatedCoupon = await Coupon.findByIdAndUpdate(
-      req.params.id,
-      {
-        code,
-        discountPercentage,
-        expirationDate,
-        isActive,
+    const updatedCoupon = await prisma.coupon.update({
+      where: { id: BigInt(req.params.id) },
+      data: {
+        code: code ?? undefined,
+        description: description ?? undefined,
+        discount_type: discount_type ?? undefined,
+        discount_value: discount_value ?? undefined,
+        min_order: min_order ?? undefined,
+        usage_limit: usage_limit ?? undefined,
+        expires_at: expires_at ? new Date(expires_at) : undefined,
       },
-      { new: true }
-    );
-
-    res.json({
-      message: "Coupon updated successfully",
-      coupon: updatedCoupon,
     });
+
+    res.json({ message: "Coupon updated successfully", coupon: updatedCoupon });
   } catch (error) {
     res
       .status(500)
@@ -137,12 +129,12 @@ export const updateCoupon = async (req, res) => {
 
 export const deleteCoupon = async (req, res) => {
   try {
-    const coupon = await Coupon.findById(req.params.id);
+    const coupon = await prisma.coupon.findUnique({ where: { id: BigInt(req.params.id) } });
     if (!coupon) {
       return res.status(404).json({ message: "Coupon not found" });
     }
 
-    await Coupon.findByIdAndUpdate(req.params.id, { isActive: false });
+    await prisma.coupon.delete({ where: { id: BigInt(req.params.id) } });
     res.json({ message: "Coupon deleted successfully" });
   } catch (error) {
     res

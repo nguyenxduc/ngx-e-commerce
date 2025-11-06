@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
-import User from "../models/user.model.js";
+import bcrypt from "bcryptjs";
+import { prisma } from "../lib/db.js";
 
 const generateAccessToken = (userId) => {
   return jwt.sign({ userId }, process.env.ACCESS_TOKEN_SECRET, {
@@ -39,7 +40,7 @@ export const signup = async (req, res) => {
       });
     }
 
-    const userExists = await User.findOne({ email });
+    const userExists = await prisma.user.findUnique({ where: { email } });
     if (userExists) {
       return res.status(400).json({
         success: false,
@@ -47,14 +48,17 @@ export const signup = async (req, res) => {
       });
     }
 
-    const user = await User.create({
-      name,
-      email,
-      password,
+    const hashed = await bcrypt.hash(password, 10);
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password_digest: hashed,
+      },
     });
 
-    const accessToken = generateAccessToken(user._id);
-    const refreshToken = generateRefreshToken(user._id);
+    const accessToken = generateAccessToken(user.id.toString());
+    const refreshToken = generateRefreshToken(user.id.toString());
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
@@ -69,13 +73,11 @@ export const signup = async (req, res) => {
       data: {
         accessToken,
         user: {
-          _id: user._id,
+          id: user.id.toString(),
           name: user.name,
           email: user.email,
           role: user.role,
-          avatar: user.avatar,
           phone: user.phone,
-          shop: user.shop || null,
         },
       },
     });
@@ -99,7 +101,7 @@ export const login = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email });
+    const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -107,7 +109,10 @@ export const login = async (req, res) => {
       });
     }
 
-    const isMatch = await user.comparePassword(password);
+    const isMatch =
+      user && user.password_digest
+        ? await bcrypt.compare(password, user.password_digest)
+        : false;
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -115,8 +120,8 @@ export const login = async (req, res) => {
       });
     }
 
-    const accessToken = generateAccessToken(user._id);
-    const refreshToken = generateRefreshToken(user._id);
+    const accessToken = generateAccessToken(user.id.toString());
+    const refreshToken = generateRefreshToken(user.id.toString());
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
@@ -131,13 +136,11 @@ export const login = async (req, res) => {
       data: {
         accessToken,
         user: {
-          _id: user._id,
+          id: user.id.toString(),
           name: user.name,
           email: user.email,
           role: user.role,
-          avatar: user.avatar,
           phone: user.phone,
-          shop: user.shop || null,
         },
       },
     });
@@ -204,9 +207,9 @@ export const refreshToken = (req, res) => {
 
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id)
-      .select("-password")
-      .populate("shop", "name description");
+    const user = await prisma.user.findUnique({
+      where: { id: BigInt(req.user.id) },
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -218,15 +221,13 @@ export const getProfile = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        _id: user._id,
+        id: user.id.toString(),
         name: user.name,
         email: user.email,
         role: user.role,
-        avatar: user.avatar,
         phone: user.phone,
-        shop: user.shop || null,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at,
       },
     });
   } catch (err) {
@@ -240,10 +241,13 @@ export const getProfile = async (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { name, phone, avatar } = req.body;
-    const userId = req.user._id;
+    const { user: userBody } = req.body;
+    const { name, phone, address } = userBody || req.body;
+    const userId = req.user.id;
 
-    const user = await User.findById(userId);
+    const user = await prisma.user.findUnique({
+      where: { id: BigInt(userId) },
+    });
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -251,31 +255,26 @@ export const updateProfile = async (req, res) => {
       });
     }
 
-    const updateData = {};
-    if (name !== undefined) updateData.name = name;
-    if (phone !== undefined) updateData.phone = phone;
-    if (avatar !== undefined) updateData.avatar = avatar;
-
-    const updatedUser = await User.findByIdAndUpdate(userId, updateData, {
-      new: true,
-      runValidators: true,
-    })
-      .select("-password")
-      .populate("shop", "name description");
+    const updatedUser = await prisma.user.update({
+      where: { id: BigInt(userId) },
+      data: {
+        name: name ?? undefined,
+        phone: phone ?? undefined,
+        address: address ?? undefined,
+      },
+    });
 
     res.status(200).json({
       success: true,
       message: "Profile updated successfully",
       data: {
-        _id: updatedUser._id,
+        id: updatedUser.id.toString(),
         name: updatedUser.name,
         email: updatedUser.email,
         role: updatedUser.role,
-        avatar: updatedUser.avatar,
         phone: updatedUser.phone,
-        shop: updatedUser.shop || null,
-        createdAt: updatedUser.createdAt,
-        updatedAt: updatedUser.updatedAt,
+        createdAt: updatedUser.created_at,
+        updatedAt: updatedUser.updated_at,
       },
     });
   } catch (err) {
@@ -284,5 +283,51 @@ export const updateProfile = async (req, res) => {
       success: false,
       error: "Internal server error",
     });
+  }
+};
+
+export const changePassword = async (req, res) => {
+  try {
+    const { current_password, new_password } = req.body;
+    const userId = req.user.id;
+
+    if (!current_password || !new_password) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Missing password fields" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: BigInt(userId) },
+    });
+    if (!user || !user.password_digest) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    const ok = await bcrypt.compare(current_password, user.password_digest);
+    if (!ok)
+      return res
+        .status(400)
+        .json({ success: false, error: "Current password incorrect" });
+
+    if (new_password.length < 6) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          error: "New password must be at least 6 characters",
+        });
+    }
+
+    const hashed = await bcrypt.hash(new_password, 10);
+    await prisma.user.update({
+      where: { id: BigInt(userId) },
+      data: { password_digest: hashed },
+    });
+
+    res.json({ success: true, message: "Password changed successfully" });
+  } catch (err) {
+    console.error("Change password error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
   }
 };
