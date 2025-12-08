@@ -130,7 +130,10 @@ export const getAllProducts = async (req, res) => {
 
     // Get all products first (before filtering by specs)
     // Note: We fetch all products because Prisma doesn't easily support filtering JSON array fields
-    const allProducts = await prisma.product.findMany({ where, orderBy });
+    const allProducts = await prisma.product.findMany({
+      where: { ...where, deleted_at: null },
+      orderBy,
+    });
 
     // If no filter parameters, return paginated results directly
     if (Object.keys(filterParams).length === 0) {
@@ -317,8 +320,8 @@ export const getAllProducts = async (req, res) => {
 
 export const getProductById = async (req, res) => {
   try {
-    const product = await prisma.product.findUnique({
-      where: { id: BigInt(req.params.id) },
+    const product = await prisma.product.findFirst({
+      where: { id: BigInt(req.params.id), deleted_at: null },
     });
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
@@ -380,7 +383,10 @@ export const updateProduct = async (req, res) => {
 
 export const deleteProduct = async (req, res) => {
   try {
-    await prisma.product.delete({ where: { id: BigInt(req.params.id) } });
+    await prisma.product.update({
+      where: { id: BigInt(req.params.id) },
+      data: { deleted_at: new Date() },
+    });
     res.json({ message: "Product deleted successfully" });
   } catch (error) {
     res
@@ -394,6 +400,7 @@ export const searchProducts = async (req, res) => {
     const { query } = req.query;
     const products = await prisma.product.findMany({
       where: {
+        deleted_at: null,
         name: { contains: query, mode: "insensitive" },
       },
       orderBy: { created_at: "desc" },
@@ -420,7 +427,10 @@ export const searchProducts = async (req, res) => {
 export const getProductsByCategory = async (req, res) => {
   try {
     const products = await prisma.product.findMany({
-      where: { category_id: BigInt(req.params.categoryId) },
+      where: {
+        category_id: BigInt(req.params.categoryId),
+        deleted_at: null,
+      },
       orderBy: { created_at: "desc" },
     });
 

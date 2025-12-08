@@ -13,8 +13,8 @@ export const createOrder = async (req, res) => {
     let totalAmount = 0;
     const orderItemsData = [];
     for (const it of items) {
-      const product = await prisma.product.findUnique({
-        where: { id: BigInt(it.product_id) },
+      const product = await prisma.product.findFirst({
+        where: { id: BigInt(it.product_id), deleted_at: null },
       });
       if (!product)
         return res
@@ -86,8 +86,8 @@ export const getOrderById = async (req, res) => {
     const { id } = req.params;
     //const userId = req.user.id;
 
-    const order = await prisma.order.findUnique({
-      where: { id: BigInt(id) },
+    const order = await prisma.order.findFirst({
+      where: { id: BigInt(id), deleted_at: null },
       include: {
         user: { select: { id: true, name: true, email: true } },
         order_items: {
@@ -118,7 +118,7 @@ export const getUserOrders = async (req, res) => {
   try {
     const userId = req.user.id;
     const orders = await prisma.order.findMany({
-      where: { user_id: BigInt(userId) },
+      where: { user_id: BigInt(userId), deleted_at: null },
       orderBy: { created_at: "desc" },
       include: { order_items: true },
     });
@@ -134,7 +134,7 @@ export const getAllOrders = async (req, res) => {
   try {
     const { page = 1, limit = 20, status, q } = req.query;
 
-    const where = {};
+    const where = { deleted_at: null };
     if (status) where.status = String(status);
     if (q) where.order_number = { contains: String(q), mode: "insensitive" };
 
@@ -187,8 +187,8 @@ export const updateOrderStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status" });
     }
 
-    const order = await prisma.order.findUnique({
-      where: { id: BigInt(id) },
+    const order = await prisma.order.findFirst({
+      where: { id: BigInt(id), deleted_at: null },
       include: { order_items: true },
     });
     if (!order) {
@@ -234,8 +234,8 @@ export const deleteOrder = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const order = await prisma.order.findUnique({
-      where: { id: BigInt(id) },
+    const order = await prisma.order.findFirst({
+      where: { id: BigInt(id), deleted_at: null },
       include: { order_items: true },
     });
     if (!order) {
@@ -258,7 +258,10 @@ export const deleteOrder = async (req, res) => {
       });
     }
 
-    await prisma.order.delete({ where: { id: BigInt(id) } });
+    await prisma.order.update({
+      where: { id: BigInt(id) },
+      data: { deleted_at: new Date() },
+    });
 
     res.json({ message: "Order deleted successfully" });
   } catch (error) {
@@ -272,8 +275,8 @@ export const cancelOrder = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const order = await prisma.order.findUnique({
-      where: { id: BigInt(id) },
+    const order = await prisma.order.findFirst({
+      where: { id: BigInt(id), deleted_at: null },
       include: { order_items: true },
     });
     if (!order)
@@ -305,26 +308,29 @@ export const cancelOrder = async (req, res) => {
     });
     res.json({ success: true, message: "Order cancelled", order: updated });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to cancel order",
-        error: error.message,
-      });
+    res.status(500).json({
+      success: false,
+      message: "Failed to cancel order",
+      error: error.message,
+    });
   }
 };
 
 export const getOrderStats = async (_req, res) => {
   try {
+    const whereActive = { deleted_at: null };
     const [total_orders, pending_orders, revenueRows, recent_orders] =
       await Promise.all([
-        prisma.order.count(),
-        prisma.order.count({ where: { status: "pending" } }),
-        prisma.order.aggregate({ _sum: { total_amount: true } }),
+        prisma.order.count({ where: whereActive }),
+        prisma.order.count({ where: { status: "pending", deleted_at: null } }),
+        prisma.order.aggregate({
+          _sum: { total_amount: true },
+          where: whereActive,
+        }),
         prisma.order.findMany({
           orderBy: { created_at: "desc" },
           take: 10,
+          where: whereActive,
           include: { user: { select: { id: true, name: true } } },
         }),
       ]);

@@ -5,6 +5,7 @@ export const listSubCategories = async (req, res) => {
   try {
     const where = {};
     if (req.query.category_id) where.category_id = BigInt(req.query.category_id);
+    where.deleted_at = null;
     const list = await prisma.subCategory.findMany({ where, orderBy: { name: "asc" } });
     res.json(list);
   } catch (error) {
@@ -15,7 +16,7 @@ export const listSubCategories = async (req, res) => {
 export const getSubCategory = async (req, res) => {
   try {
     const sub = await prisma.subCategory.findUnique({
-      where: { id: BigInt(req.params.id) },
+      where: { id: BigInt(req.params.id), deleted_at: null },
       include: { category: true },
     });
     if (!sub) return res.status(404).json({ message: "Sub category not found" });
@@ -78,7 +79,10 @@ export const updateSubCategory = async (req, res) => {
 
 export const deleteSubCategory = async (req, res) => {
   try {
-    await prisma.subCategory.delete({ where: { id: BigInt(req.params.id) } });
+    await prisma.subCategory.update({
+      where: { id: BigInt(req.params.id) },
+      data: { deleted_at: new Date() },
+    });
     res.json({ message: "Sub category deleted" });
   } catch (error) {
     res.status(500).json({ message: "Failed to delete sub category", error: error.message });

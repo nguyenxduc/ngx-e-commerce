@@ -5,7 +5,7 @@ export const getUserWishlist = async (req, res) => {
     const userId = req.user.id;
 
     const items = await prisma.wishlist.findMany({
-      where: { user_id: BigInt(userId) },
+      where: { user_id: BigInt(userId), product: { deleted_at: null } },
       include: { product: true },
       orderBy: { created_at: "desc" },
     });
@@ -26,7 +26,9 @@ export const addToWishlist = async (req, res) => {
     const { productId } = req.body;
     const userId = req.user.id;
 
-    const product = await prisma.product.findUnique({ where: { id: BigInt(productId) } });
+    const product = await prisma.product.findFirst({
+      where: { id: BigInt(productId), deleted_at: null },
+    });
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
@@ -42,7 +44,7 @@ export const addToWishlist = async (req, res) => {
     });
 
     const items = await prisma.wishlist.findMany({
-      where: { user_id: BigInt(userId) },
+      where: { user_id: BigInt(userId), product: { deleted_at: null } },
       include: { product: true },
       orderBy: { created_at: "desc" },
     });

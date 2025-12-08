@@ -3,7 +3,7 @@ import { prisma } from "../lib/db.js";
 export const listCustomers = async (req, res) => {
   try {
     const { page = 1, limit = 20, q } = req.query;
-    const where = { };
+    const where = { deleted_at: null };
     if (q) {
       where.OR = [
         { name: { contains: String(q), mode: "insensitive" } },
@@ -51,8 +51,8 @@ export const listCustomers = async (req, res) => {
 export const getCustomer = async (req, res) => {
   try {
     const id = BigInt(req.params.id);
-    const user = await prisma.user.findUnique({
-      where: { id },
+    const user = await prisma.user.findFirst({
+      where: { id, deleted_at: null },
       select: {
         id: true,
         name: true,
@@ -101,7 +101,10 @@ export const updateCustomer = async (req, res) => {
 export const deleteCustomer = async (req, res) => {
   try {
     const id = BigInt(req.params.id);
-    await prisma.user.delete({ where: { id } });
+    await prisma.user.update({
+      where: { id },
+      data: { deleted_at: new Date() },
+    });
     res.json({ message: "Customer deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Failed to delete customer", error: error.message });

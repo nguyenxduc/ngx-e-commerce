@@ -7,7 +7,7 @@ const generateAccessToken = (userId) => {
     process.env.ACCESS_TOKEN_SECRET ||
     "your-access-token-secret-key-change-in-production";
   return jwt.sign({ userId }, secret, {
-    expiresIn: "15m",
+    expiresIn: "7d",
   });
 };
 
@@ -46,7 +46,9 @@ export const signup = async (req, res) => {
       });
     }
 
-    const userExists = await prisma.user.findUnique({ where: { email } });
+    const userExists = await prisma.user.findFirst({
+      where: { email, deleted_at: null },
+    });
     if (userExists) {
       return res.status(400).json({
         success: false,
@@ -107,7 +109,9 @@ export const login = async (req, res) => {
       });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: { email, deleted_at: null },
+    });
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -224,8 +228,8 @@ export const getProfile = async (req, res) => {
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: BigInt(req.user.id) },
+    const user = await prisma.user.findFirst({
+      where: { id: BigInt(req.user.id), deleted_at: null },
     });
 
     if (!user) {
@@ -262,8 +266,8 @@ export const updateProfile = async (req, res) => {
     const { name, phone, address } = userBody || req.body;
     const userId = req.user.id;
 
-    const user = await prisma.user.findUnique({
-      where: { id: BigInt(userId) },
+    const user = await prisma.user.findFirst({
+      where: { id: BigInt(userId), deleted_at: null },
     });
     if (!user) {
       return res.status(404).json({

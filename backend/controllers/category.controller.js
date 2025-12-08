@@ -4,8 +4,9 @@ import cloudinary from "../lib/cloudinary.js";
 export const listCategories = async (req, res) => {
   try {
     const categories = await prisma.category.findMany({
+      where: { deleted_at: null },
       orderBy: { name: "asc" },
-      include: { sub_categories: true },
+      include: { sub_categories: { where: { deleted_at: null } } },
     });
     res.json(categories);
   } catch (error) {
@@ -16,10 +17,10 @@ export const listCategories = async (req, res) => {
 export const getCategory = async (req, res) => {
   try {
     const cat = await prisma.category.findUnique({
-      where: { id: BigInt(req.params.id) },
+      where: { id: BigInt(req.params.id), deleted_at: null },
       include: {
-        sub_categories: true,
-        products: true,
+        sub_categories: { where: { deleted_at: null } },
+        products: { where: { deleted_at: null } },
       },
     });
     if (!cat) return res.status(404).json({ message: "Category not found" });
@@ -32,7 +33,7 @@ export const getCategory = async (req, res) => {
 export const getSubCategoriesOfCategory = async (req, res) => {
   try {
     const subs = await prisma.subCategory.findMany({
-      where: { category_id: BigInt(req.params.id) },
+      where: { category_id: BigInt(req.params.id), deleted_at: null },
       orderBy: { name: "asc" },
     });
     res.json(subs);
@@ -94,7 +95,10 @@ export const updateCategory = async (req, res) => {
 
 export const deleteCategory = async (req, res) => {
   try {
-    await prisma.category.delete({ where: { id: BigInt(req.params.id) } });
+    await prisma.category.update({
+      where: { id: BigInt(req.params.id) },
+      data: { deleted_at: new Date() },
+    });
     res.json({ message: "Category deleted" });
   } catch (error) {
     res.status(500).json({ message: "Failed to delete category", error: error.message });

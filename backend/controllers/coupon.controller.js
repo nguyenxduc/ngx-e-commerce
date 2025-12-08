@@ -4,7 +4,7 @@ export const createCoupon = async (req, res) => {
   try {
     const { code, description, discount_type = "percent", discount_value, min_order, usage_limit = 1, expires_at } = req.body;
 
-    const existingCoupon = await prisma.coupon.findUnique({ where: { code } });
+    const existingCoupon = await prisma.coupon.findFirst({ where: { code, deleted_at: null } });
     if (existingCoupon) {
       return res.status(400).json({ message: "Coupon code already exists" });
     }
@@ -35,7 +35,7 @@ export const validateCoupon = async (req, res) => {
   try {
     const { code, amount } = req.body;
 
-    const coupon = await prisma.coupon.findUnique({ where: { code } });
+    const coupon = await prisma.coupon.findFirst({ where: { code, deleted_at: null } });
     if (!coupon) {
       return res.status(404).json({ message: "Invalid coupon code" });
     }
@@ -68,7 +68,10 @@ export const validateCoupon = async (req, res) => {
 
 export const getAllCoupons = async (req, res) => {
   try {
-    const coupons = await prisma.coupon.findMany({ orderBy: { created_at: "desc" } });
+    const coupons = await prisma.coupon.findMany({
+      where: { deleted_at: null },
+      orderBy: { created_at: "desc" },
+    });
     res.json(coupons);
   } catch (error) {
     res
@@ -79,7 +82,9 @@ export const getAllCoupons = async (req, res) => {
 
 export const getCouponById = async (req, res) => {
   try {
-    const coupon = await prisma.coupon.findUnique({ where: { id: BigInt(req.params.id) } });
+    const coupon = await prisma.coupon.findFirst({
+      where: { id: BigInt(req.params.id), deleted_at: null },
+    });
     if (!coupon) {
       return res.status(404).json({ message: "Coupon not found" });
     }
@@ -96,13 +101,15 @@ export const updateCoupon = async (req, res) => {
   try {
     const { code, description, discount_type, discount_value, min_order, usage_limit, expires_at } = req.body;
 
-    const coupon = await prisma.coupon.findUnique({ where: { id: BigInt(req.params.id) } });
+    const coupon = await prisma.coupon.findFirst({
+      where: { id: BigInt(req.params.id), deleted_at: null },
+    });
     if (!coupon) {
       return res.status(404).json({ message: "Coupon not found" });
     }
 
     if (code && code !== coupon.code) {
-      const exists = await prisma.coupon.findUnique({ where: { code } });
+      const exists = await prisma.coupon.findFirst({ where: { code, deleted_at: null } });
       if (exists) return res.status(400).json({ message: "Coupon code already exists" });
     }
 
@@ -129,12 +136,17 @@ export const updateCoupon = async (req, res) => {
 
 export const deleteCoupon = async (req, res) => {
   try {
-    const coupon = await prisma.coupon.findUnique({ where: { id: BigInt(req.params.id) } });
+    const coupon = await prisma.coupon.findFirst({
+      where: { id: BigInt(req.params.id), deleted_at: null },
+    });
     if (!coupon) {
       return res.status(404).json({ message: "Coupon not found" });
     }
 
-    await prisma.coupon.delete({ where: { id: BigInt(req.params.id) } });
+    await prisma.coupon.update({
+      where: { id: BigInt(req.params.id) },
+      data: { deleted_at: new Date() },
+    });
     res.json({ message: "Coupon deleted successfully" });
   } catch (error) {
     res

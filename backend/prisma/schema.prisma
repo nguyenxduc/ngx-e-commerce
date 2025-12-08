@@ -29,6 +29,7 @@ model Category {
   description   String?
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
+  deleted_at    DateTime?
 
   // relations
   sub_categories SubCategory[]
@@ -46,6 +47,7 @@ model SubCategory {
   category_id BigInt
   created_at  DateTime    @default(now())
   updated_at  DateTime    @updatedAt
+  deleted_at  DateTime?
 
   // relations
   category Category  @relation(fields: [category_id], references: [id])
@@ -70,6 +72,7 @@ model Product {
   rating          Decimal?  @db.Decimal(3, 2)
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
 
   // relations
   category     Category     @relation(fields: [category_id], references: [id])
@@ -80,6 +83,11 @@ model Product {
   wishlists    Wishlist[]
 
   @@map("products")
+  @@index([name])
+  @@index([category_id])
+  @@index([sub_category_id])
+  @@index([price])
+  @@index([rating])
 }
 
 model ProductSpec {
@@ -88,6 +96,7 @@ model ProductSpec {
   value      Json?    @default("[]")
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+  deleted_at DateTime?
 
   @@map("product_specs")
 }
@@ -102,6 +111,7 @@ model User {
   address         String?
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
+  deleted_at      DateTime?
 
   // relations
   orders    Order[]
@@ -118,6 +128,7 @@ model Cart {
   user_id    BigInt
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+  deleted_at DateTime?
 
   // relations
   user       User       @relation(fields: [user_id], references: [id])
@@ -134,6 +145,7 @@ model CartItem {
   color      Json
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+  deleted_at DateTime?
 
   // relations
   cart    Cart    @relation(fields: [cart_id], references: [id])
@@ -153,11 +165,13 @@ model Order {
   coupon_id        BigInt?
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
+  deleted_at       DateTime?
 
   // relations
   user        User        @relation(fields: [user_id], references: [id])
   order_items OrderItem[]
   coupon      Coupon?     @relation(fields: [coupon_id], references: [id])
+  payments    Payment[]
 
   @@map("orders")
 }
@@ -172,6 +186,7 @@ model OrderItem {
   color       String?
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
 
   // relations
   order   Order   @relation(fields: [order_id], references: [id])
@@ -188,6 +203,7 @@ model Review {
   comment    String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
+  deleted_at DateTime?
 
   // relations
   user    User    @relation(fields: [user_id], references: [id])
@@ -201,6 +217,7 @@ model Wishlist {
   user_id    BigInt
   product_id BigInt
   created_at DateTime @default(now())
+  deleted_at DateTime?
 
   // relations
   user    User    @relation(fields: [user_id], references: [id])
@@ -222,6 +239,7 @@ model Coupon {
   expires_at     DateTime?
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
+  deleted_at     DateTime?
 
   // relations
   orders Order[]
@@ -240,10 +258,42 @@ model FilterOption {
   is_active   Boolean  @default(true)
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
 
   category Category? @relation(fields: [category_id], references: [id])
 
   @@unique([key, value, category_id])
   @@index([key, category_id])
   @@map("filter_options")
+}
+
+model Payment {
+  id             BigInt    @id @default(autoincrement())
+  order_id       BigInt
+  provider       String    @default("momo")
+  amount         Decimal   @db.Decimal(10, 2)
+  currency       String    @default("VND")
+  status         String    @default("pending") // pending, paid, failed, expired, canceled
+  momo_order_id  String?   // orderId returned by MoMo
+  momo_request_id String?  @unique // requestId used when creating payment
+  momo_trans_id  String?   // transId returned after payment
+  pay_url        String?
+  deeplink       String?
+  qr_code_url    String?
+  signature      String?
+  extra_data     String?
+  result_code    Int?
+  message        String?
+  paid_at        DateTime?
+  expired_at     DateTime?
+  raw_response   Json?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
+
+  // relations
+  order Order @relation(fields: [order_id], references: [id])
+
+  @@index([order_id])
+  @@map("payments")
 }

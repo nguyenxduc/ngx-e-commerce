@@ -6,7 +6,9 @@ export const addToCart = async (req, res) => {
     const { quantity = 1, color = null } = req.body;
     const userId = req.user.id;
 
-    const productDoc = await prisma.product.findUnique({ where: { id: BigInt(product_id) } });
+    const productDoc = await prisma.product.findFirst({
+      where: { id: BigInt(product_id), deleted_at: null },
+    });
     if (!productDoc) return res.status(404).json({ message: "Product not found" });
     if (productDoc.quantity < quantity) return res.status(400).json({ message: "Insufficient stock" });
 
@@ -16,7 +18,7 @@ export const addToCart = async (req, res) => {
     }
 
     const existing = await prisma.cartItem.findFirst({
-      where: { cart_id: cart.id, product_id: BigInt(product_id) },
+      where: { cart_id: cart.id, product_id: BigInt(product_id), deleted_at: null },
     });
 
     if (existing) {
@@ -39,8 +41,8 @@ export const addToCart = async (req, res) => {
     }
 
     const populated = await prisma.cartItem.findMany({
-      where: { cart_id: cart.id },
-      include: { product: true },
+      where: { cart_id: cart.id, deleted_at: null },
+      include: { product: { where: { deleted_at: null } } },
       orderBy: { created_at: "desc" },
     });
 
@@ -71,7 +73,7 @@ export const getCartProducts = async (req, res) => {
     }
     
     const items = await prisma.cartItem.findMany({ 
-      where: { cart_id: cart.id }, 
+      where: { cart_id: cart.id, deleted_at: null, product: { deleted_at: null } }, 
       include: { product: true } 
     });
     
@@ -148,7 +150,10 @@ export const removeAllFromCart = async (req, res) => {
     const userId = req.user.id;
     const cart = await prisma.cart.findFirst({ where: { user_id: BigInt(userId) } });
     if (!cart) return res.json({ message: "All items removed from cart" });
-    await prisma.cartItem.deleteMany({ where: { cart_id: cart.id } });
+    await prisma.cartItem.updateMany({
+      where: { cart_id: cart.id },
+      data: { deleted_at: new Date() },
+    });
     const summary = await summarizeCart(cart.id);
     res.json({ message: "All items removed from cart", cart_summary: summary });
   } catch (error) {
@@ -167,7 +172,7 @@ export const updateQuantity = async (req, res) => {
 
     const cart = await prisma.cart.findFirst({ where: { user_id: BigInt(userId) } });
     if (!cart) return res.status(404).json({ message: "Cart not found" });
-    const cartItem = await prisma.cartItem.findFirst({ where: { cart_id: cart.id, product_id: BigInt(product_id) }, include: { product: true } });
+    const cartItem = await prisma.cartItem.findFirst({ where: { cart_id: cart.id, product_id: BigInt(product_id), deleted_at: null }, include: { product: true } });
     if (!cartItem) return res.status(404).json({ message: "Item not found in cart" });
     if (cartItem.product.quantity < quantity) return res.status(400).json({ message: "Insufficient stock" });
 
@@ -187,9 +192,12 @@ export const deleteCartItem = async (req, res) => {
     const userId = req.user.id;
     const cart = await prisma.cart.findFirst({ where: { user_id: BigInt(userId) } });
     if (!cart) return res.status(404).json({ message: "Cart not found" });
-    const cartItem = await prisma.cartItem.findFirst({ where: { cart_id: cart.id, product_id: BigInt(product_id) } });
+    const cartItem = await prisma.cartItem.findFirst({ where: { cart_id: cart.id, product_id: BigInt(product_id), deleted_at: null } });
     if (!cartItem) return res.status(404).json({ message: "Item not found in cart" });
-    await prisma.cartItem.delete({ where: { id: cartItem.id } });
+    await prisma.cartItem.update({
+      where: { id: cartItem.id },
+      data: { deleted_at: new Date() },
+    });
     const summary = await summarizeCart(cart.id);
     res.json({ message: "Item removed from cart", cart_summary: summary });
   } catch (error) {
@@ -200,7 +208,10 @@ export const deleteCartItem = async (req, res) => {
 };
 
 async function summarizeCart(cartId) {
-  const items = await prisma.cartItem.findMany({ where: { cart_id: cartId }, include: { product: true } });
+  const items = await prisma.cartItem.findMany({
+    where: { cart_id: cartId, deleted_at: null, product: { deleted_at: null } },
+    include: { product: true },
+  });
   let total_items = 0;
   let total_original_price = 0;
   let total_price = 0;
