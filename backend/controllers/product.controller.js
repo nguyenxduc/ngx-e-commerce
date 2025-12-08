@@ -397,24 +397,57 @@ export const deleteProduct = async (req, res) => {
 
 export const searchProducts = async (req, res) => {
   try {
-    const { query } = req.query;
-    const products = await prisma.product.findMany({
-      where: {
-        deleted_at: null,
-        name: { contains: query, mode: "insensitive" },
-      },
-      orderBy: { created_at: "desc" },
-    });
+    const {
+      query,
+      category_id,
+      sub_category_id,
+      price_min,
+      price_max,
+      rating_min,
+      sort = "newest",
+      page = 1,
+      limit = 20,
+    } = req.query;
+
+    const where = { deleted_at: null };
+    if (query) where.name = { contains: String(query), mode: "insensitive" };
+    if (category_id) where.category_id = BigInt(category_id);
+    if (sub_category_id) where.sub_category_id = BigInt(sub_category_id);
+    if (price_min || price_max) {
+      where.price = {};
+      if (price_min) where.price.gte = Number(price_min);
+      if (price_max) where.price.lte = Number(price_max);
+    }
+    if (rating_min) where.rating = { gte: Number(rating_min) };
+
+    let orderBy = { created_at: "desc" };
+    if (sort === "price-asc") orderBy = { price: "asc" };
+    else if (sort === "price-desc") orderBy = { price: "desc" };
+    else if (sort === "rating") orderBy = { rating: "desc" };
+    else if (sort === "popular") orderBy = { sold: "desc" };
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const take = Number(limit);
+
+    const [total_count, products] = await Promise.all([
+      prisma.product.count({ where }),
+      prisma.product.findMany({
+        where,
+        orderBy,
+        skip,
+        take,
+      }),
+    ]);
 
     const productsWithCalculations = products.map(calculateProductPrices);
 
     res.json({
       products: productsWithCalculations,
       pagination: {
-        current_page: 1,
-        per_page: products.length,
-        total_count: products.length,
-        total_pages: 1,
+        current_page: Number(page),
+        per_page: Number(limit),
+        total_count,
+        total_pages: Math.max(1, Math.ceil(total_count / Number(limit))),
       },
     });
   } catch (error) {

@@ -46,13 +46,23 @@ export const createOrder = async (req, res) => {
       if (coupon) couponId = coupon.id;
     }
 
+    // Parse shipping_address if it's a string
+    let parsedShippingAddress = shipping_address;
+    if (typeof shipping_address === 'string') {
+      try {
+        parsedShippingAddress = JSON.parse(shipping_address);
+      } catch {
+        parsedShippingAddress = shipping_address;
+      }
+    }
+
     const created = await prisma.order.create({
       data: {
         user_id: BigInt(userId),
         order_number: `ORD-${Date.now()}`,
         total_amount: totalAmount,
         status: "pending",
-        shipping_address: shipping_address ?? null,
+        shipping_address: parsedShippingAddress ?? null,
         payment_method: payment_method ?? null,
         coupon_id: couponId,
         order_items: { createMany: { data: orderItemsData } },

@@ -37,7 +37,6 @@ export const protectRoute = async (req, res, next) => {
         });
       }
 
-      // attach safe user subset to request
       req.user = {
         id: userRecord.id.toString(),
         name: userRecord.name,

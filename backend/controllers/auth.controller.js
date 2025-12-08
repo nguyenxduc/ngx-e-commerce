@@ -1,20 +1,13 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/db.js";
+import cloudinary from "../lib/cloudinary.js";
+import { promisify } from "util";
 
 const generateAccessToken = (userId) => {
   const secret =
     process.env.ACCESS_TOKEN_SECRET ||
     "your-access-token-secret-key-change-in-production";
-  return jwt.sign({ userId }, secret, {
-    expiresIn: "7d",
-  });
-};
-
-const generateRefreshToken = (userId) => {
-  const secret =
-    process.env.REFRESH_TOKEN_SECRET ||
-    "your-refresh-token-secret-key-change-in-production";
   return jwt.sign({ userId }, secret, {
     expiresIn: "7d",
   });
@@ -66,14 +59,6 @@ export const signup = async (req, res) => {
     });
 
     const accessToken = generateAccessToken(user.id.toString());
-    const refreshToken = generateRefreshToken(user.id.toString());
-
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
 
     res.status(201).json({
       success: true,
@@ -131,14 +116,6 @@ export const login = async (req, res) => {
     }
 
     const accessToken = generateAccessToken(user.id.toString());
-    const refreshToken = generateRefreshToken(user.id.toString());
-
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
 
     res.status(200).json({
       success: true,
@@ -165,11 +142,6 @@ export const login = async (req, res) => {
 
 export const logout = (req, res) => {
   try {
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      sameSite: "strict",
-      secure: process.env.NODE_ENV === "production",
-    });
     res.status(200).json({
       success: true,
       message: "Logged out successfully",
@@ -179,41 +151,6 @@ export const logout = (req, res) => {
     res.status(500).json({
       success: false,
       error: "Internal server error",
-    });
-  }
-};
-
-export const refreshToken = (req, res) => {
-  try {
-    const token = req.cookies.refreshToken;
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "No refresh token provided",
-      });
-    }
-
-    const secret =
-      process.env.REFRESH_TOKEN_SECRET ||
-      "your-refresh-token-secret-key-change-in-production";
-    const decoded = jwt.verify(token, secret);
-    const newAccessToken = generateAccessToken(decoded.userId);
-
-    res.status(200).json({
-      success: true,
-      data: { accessToken: newAccessToken },
-    });
-  } catch (err) {
-    console.error("Refresh token error:", err);
-    if (err.name === "TokenExpiredError") {
-      return res.status(401).json({
-        success: false,
-        error: "Refresh token expired",
-      });
-    }
-    res.status(401).json({
-      success: false,
-      error: "Invalid refresh token",
     });
   }
 };
@@ -247,6 +184,7 @@ export const getProfile = async (req, res) => {
         email: user.email,
         role: user.role,
         phone: user.phone,
+        avatar: user.avatar,
         createdAt: user.created_at,
         updatedAt: user.updated_at,
       },
@@ -294,6 +232,7 @@ export const updateProfile = async (req, res) => {
         email: updatedUser.email,
         role: updatedUser.role,
         phone: updatedUser.phone,
+        avatar: updatedUser.avatar,
         createdAt: updatedUser.created_at,
         updatedAt: updatedUser.updated_at,
       },
@@ -348,5 +287,164 @@ export const changePassword = async (req, res) => {
   } catch (err) {
     console.error("Change password error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
+  }
+};
+
+// Upload avatar
+export const uploadAvatar = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: "No file uploaded",
+      });
+    }
+
+    // Validate file type
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+    if (!allowedTypes.includes(req.file.mimetype)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid file type. Only JPEG, PNG, and WebP are allowed",
+      });
+    }
+
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (req.file.size > maxSize) {
+      return res.status(400).json({
+        success: false,
+        error: "File size too large. Maximum size is 5MB",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: BigInt(userId) },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Delete old avatar from Cloudinary if exists
+    if (user.avatar) {
+      try {
+        // Extract public_id from Cloudinary URL
+        const urlParts = user.avatar.split("/");
+        const filename = urlParts[urlParts.length - 1];
+        const publicId = filename.split(".")[0];
+        const folder = urlParts[urlParts.length - 2];
+        const fullPublicId = folder ? `${folder}/${publicId}` : publicId;
+
+        await cloudinary.uploader.destroy(fullPublicId);
+      } catch (deleteError) {
+        console.error("Error deleting old avatar:", deleteError);
+        // Continue even if deletion fails
+      }
+    }
+
+    // Upload new avatar to Cloudinary
+    const uploadResult = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: "avatars",
+          transformation: [
+            { width: 400, height: 400, crop: "fill", gravity: "face" },
+            { quality: "auto" },
+          ],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      uploadStream.end(req.file.buffer);
+    });
+
+    // Update user avatar
+    const updatedUser = await prisma.user.update({
+      where: { id: BigInt(userId) },
+      data: { avatar: uploadResult.secure_url },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Avatar uploaded successfully",
+      data: {
+        avatar: updatedUser.avatar,
+      },
+    });
+  } catch (err) {
+    console.error("Upload avatar error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to upload avatar",
+      details: err.message,
+    });
+  }
+};
+
+// Delete avatar
+export const deleteAvatar = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const user = await prisma.user.findUnique({
+      where: { id: BigInt(userId) },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    if (!user.avatar) {
+      return res.status(400).json({
+        success: false,
+        error: "No avatar to delete",
+      });
+    }
+
+    // Delete avatar from Cloudinary
+    try {
+      const urlParts = user.avatar.split("/");
+      const filename = urlParts[urlParts.length - 1];
+      const publicId = filename.split(".")[0];
+      const folder = urlParts[urlParts.length - 2];
+      const fullPublicId = folder ? `${folder}/${publicId}` : publicId;
+
+      await cloudinary.uploader.destroy(fullPublicId);
+    } catch (deleteError) {
+      console.error("Error deleting avatar from Cloudinary:", deleteError);
+      // Continue even if deletion fails
+    }
+
+    // Update user to remove avatar
+    const updatedUser = await prisma.user.update({
+      where: { id: BigInt(userId) },
+      data: { avatar: null },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Avatar deleted successfully",
+      data: {
+        avatar: null,
+      },
+    });
+  } catch (err) {
+    console.error("Delete avatar error:", err);
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete avatar",
+      details: err.message,
+    });
   }
 };

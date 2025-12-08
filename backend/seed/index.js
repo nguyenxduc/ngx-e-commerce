@@ -791,6 +791,114 @@ async function seedWishlists(users, products) {
   return wishlists;
 }
 
+async function seedSettings() {
+  const defaultSettings = [
+    {
+      key: "bank_id",
+      value: process.env.BANK_ID || "tpbank",
+      description: "Mã ngân hàng cho QR code chuyển khoản",
+      category: "bank",
+      data_type: "string",
+      is_public: false,
+    },
+    {
+      key: "bank_account_no",
+      value: process.env.BANK_ACCOUNT_NO || "",
+      description: "Số tài khoản ngân hàng",
+      category: "bank",
+      data_type: "string",
+      is_public: false,
+    },
+    {
+      key: "bank_account_name",
+      value: process.env.BANK_ACCOUNT_NAME || "Tech Shop",
+      description: "Tên chủ tài khoản ngân hàng",
+      category: "bank",
+      data_type: "string",
+      is_public: false,
+    },
+    {
+      key: "qr_template",
+      value: process.env.QR_TEMPLATE || "compact2",
+      description: "Template QR code (compact2, compact, qr_only, print)",
+      category: "bank",
+      data_type: "string",
+      is_public: false,
+    },
+    {
+      key: "shipping_fee",
+      value: process.env.SHIPPING_FEE || "22000",
+      description: "Phí vận chuyển mặc định (VND)",
+      category: "shipping",
+      data_type: "number",
+      is_public: true,
+    },
+    {
+      key: "free_shipping_threshold",
+      value: process.env.FREE_SHIPPING_THRESHOLD || "500000",
+      description: "Ngưỡng miễn phí vận chuyển (VND)",
+      category: "shipping",
+      data_type: "number",
+      is_public: true,
+    },
+    {
+      key: "store_name",
+      value: process.env.STORE_NAME || "Tech Shop",
+      description: "Tên cửa hàng",
+      category: "general",
+      data_type: "string",
+      is_public: true,
+    },
+    {
+      key: "store_email",
+      value: process.env.STORE_EMAIL || "contact@techshop.com",
+      description: "Email liên hệ cửa hàng",
+      category: "general",
+      data_type: "string",
+      is_public: true,
+    },
+    {
+      key: "store_phone",
+      value: process.env.STORE_PHONE || "0123456789",
+      description: "Số điện thoại liên hệ cửa hàng",
+      category: "general",
+      data_type: "string",
+      is_public: true,
+    },
+    {
+      key: "store_address",
+      value: process.env.STORE_ADDRESS || "123 Main Street, Ho Chi Minh City",
+      description: "Địa chỉ cửa hàng",
+      category: "general",
+      data_type: "string",
+      is_public: true,
+    },
+  ];
+
+  const createdSettings = [];
+  for (const setting of defaultSettings) {
+    try {
+      const result = await prisma.setting.upsert({
+        where: { key: setting.key },
+        update: {
+          value: setting.value,
+          description: setting.description,
+          category: setting.category,
+          data_type: setting.data_type,
+          is_public: setting.is_public,
+          updated_at: new Date(),
+        },
+        create: setting,
+      });
+      createdSettings.push(result);
+    } catch (error) {
+      console.error(`Error seeding setting ${setting.key}:`, error);
+    }
+  }
+
+  return createdSettings;
+}
+
 async function main() {
   console.log("Seeding database...");
   await clearDatabase();
@@ -824,6 +932,9 @@ async function main() {
   
   const wishlists = await seedWishlists(users, products);
   console.log(`✓ Created ${wishlists.length} wishlists`);
+  
+  await seedSettings();
+  console.log(`✓ Created default settings`);
   
   console.log("\n✅ Seed completed successfully!");
   console.log({
