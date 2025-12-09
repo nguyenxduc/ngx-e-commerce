@@ -16,13 +16,15 @@ const router = express.Router();
 // User routes
 router.post("/", protectRoute, createOrder);
 router.get("/user/orders", protectRoute, getUserOrders);
-router.get("/:id", protectRoute, getOrderById);
-router.patch("/:id/cancel", protectRoute, cancelOrder);
 
-// Admin routes
+// Admin routes (place fixed paths before dynamic :id)
+router.get("/stats", protectRoute, adminRoute, getOrderStats);
 router.get("/", protectRoute, adminRoute, getAllOrders);
 router.patch("/:id/update_status", protectRoute, adminRoute, updateOrderStatus);
-router.get("/stats", protectRoute, adminRoute, getOrderStats);
 router.delete("/:id", protectRoute, adminRoute, deleteOrder);
+
+// Shared param routes
+router.get("/:id", protectRoute, getOrderById);
+router.patch("/:id/cancel", protectRoute, cancelOrder);
 
 export default router;

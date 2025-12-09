@@ -9,6 +9,15 @@ const calculateProductPrices = (product) => {
   const discount_percentage =
     price > 0 ? Math.round((discount / price) * 100) : 0;
 
+  // sum available stock from product_colors if present
+  const colors = product.product_colors || [];
+  const color_stock_sum = colors.reduce(
+    (sum, c) => sum + Number(c.quantity || 0),
+    0
+  );
+  const quantity =
+    color_stock_sum > 0 ? color_stock_sum : Number(product.quantity || 0);
+
   return {
     ...product,
     price,
@@ -16,6 +25,12 @@ const calculateProductPrices = (product) => {
     final_price,
     discount_percentage,
     rating: product.rating ? Number(product.rating) : 0,
+    quantity,
+    available_colors: colors.map((c) => ({
+      name: c.name || "",
+      code: c.code || "",
+      quantity: Number(c.quantity || 0),
+    })),
   };
 };
 
@@ -29,10 +44,26 @@ export const createProduct = async (req, res) => {
       img = [],
       specs = [],
       specs_detail = [],
-      color = [],
+      color = [], // legacy array
+      product_colors = [], // [{name, code, quantity}]
       category_id,
       sub_category_id,
     } = req.body;
+
+    const parseBigIntOrUndefined = (v) => {
+      if (v === undefined || v === null || v === "") return undefined;
+      const num = Number(v);
+      if (Number.isNaN(num)) return undefined;
+      return BigInt(num);
+    };
+
+    const parseSubCategory = (v) => {
+      if (v === undefined) return undefined;
+      if (v === null || v === "") return null;
+      const num = Number(v);
+      if (Number.isNaN(num)) return null;
+      return BigInt(num);
+    };
 
     let imageUrls = Array.isArray(img) ? img : [];
     if (Array.isArray(req.files) && req.files.length > 0) {
@@ -44,24 +75,58 @@ export const createProduct = async (req, res) => {
       imageUrls = uploads.map((u) => u.secure_url);
     }
 
-    const savedProduct = await prisma.product.create({
-      data: {
-        name,
-        price,
-        discount,
-        quantity,
-        img: imageUrls,
-        specs,
-        specs_detail,
-        color,
-        category_id: BigInt(category_id),
-        sub_category_id: sub_category_id ? BigInt(sub_category_id) : null,
-      },
+    // Normalize color inputs
+    const colorsInput =
+      Array.isArray(product_colors) && product_colors.length
+        ? product_colors
+        : Array.isArray(color)
+        ? color
+        : [];
+
+    // Create product and related colors in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      const savedProduct = await tx.product.create({
+        data: {
+          name,
+          price: Number(price),
+          discount: Number(discount),
+          quantity: Number(quantity), // will adjust after color insert
+          img: imageUrls,
+          specs,
+          specs_detail,
+          color, // keep legacy
+          category_id: parseBigIntOrUndefined(category_id),
+          sub_category_id: parseSubCategory(sub_category_id),
+        },
+      });
+
+      if (colorsInput.length > 0) {
+        await tx.productColor.createMany({
+          data: colorsInput.map((c) => ({
+            product_id: savedProduct.id,
+            name: c.name || "",
+            code: c.code || "",
+            quantity: Number(c.quantity || 0),
+          })),
+        });
+        // update total quantity = sum of colors
+        const sumQty = colorsInput.reduce(
+          (sum, c) => sum + Number(c.quantity || 0),
+          0
+        );
+        await tx.product.update({
+          where: { id: savedProduct.id },
+          data: { quantity: sumQty },
+        });
+        savedProduct.quantity = sumQty;
+      }
+
+      return savedProduct;
     });
 
     res
       .status(201)
-      .json({ message: "Product created successfully", product: savedProduct });
+      .json({ message: "Product created successfully", product: result });
   } catch (error) {
     res
       .status(500)
@@ -133,6 +198,7 @@ export const getAllProducts = async (req, res) => {
     const allProducts = await prisma.product.findMany({
       where: { ...where, deleted_at: null },
       orderBy,
+      include: { product_colors: true },
     });
 
     // If no filter parameters, return paginated results directly
@@ -322,14 +388,14 @@ export const getProductById = async (req, res) => {
   try {
     const product = await prisma.product.findFirst({
       where: { id: BigInt(req.params.id), deleted_at: null },
+      include: { product_colors: true },
     });
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
     const productWithCalculations = calculateProductPrices(product);
-    const in_stock = Number(product.quantity) > 0;
-    const available_colors = Array.isArray(product.color) ? product.color : [];
-    res.json({ ...productWithCalculations, in_stock, available_colors });
+    const in_stock = Number(productWithCalculations.quantity) > 0;
+    res.json({ ...productWithCalculations, in_stock });
   } catch (error) {
     res
       .status(500)
@@ -340,6 +406,7 @@ export const getProductById = async (req, res) => {
 export const updateProduct = async (req, res) => {
   try {
     const data = req.body;
+    // Upload new images if provided
     let imageUrls;
     if (Array.isArray(req.files) && req.files.length > 0) {
       const uploads = await Promise.all(
@@ -349,25 +416,121 @@ export const updateProduct = async (req, res) => {
       );
       imageUrls = uploads.map((u) => u.secure_url);
     }
-    const updatedProduct = await prisma.product.update({
-      where: { id: BigInt(req.params.id) },
-      data: {
-        name: data.name ?? undefined,
-        price: data.price ?? undefined,
-        discount: data.discount ?? undefined,
-        quantity: data.quantity ?? undefined,
-        img: imageUrls ?? data.img ?? undefined,
-        specs: data.specs ?? undefined,
-        specs_detail: data.specs_detail ?? undefined,
-        color: data.color ?? undefined,
-        category_id: data.category_id ? BigInt(data.category_id) : undefined,
-        sub_category_id:
-          data.sub_category_id !== undefined
-            ? data.sub_category_id
-              ? BigInt(data.sub_category_id)
-              : null
-            : undefined,
-      },
+
+    // Parse specs/specs_detail if sent as JSON string
+    const parsedSpecs =
+      typeof data.specs === "string"
+        ? (() => {
+            try {
+              return JSON.parse(data.specs);
+            } catch {
+              return undefined;
+            }
+          })()
+        : data.specs;
+
+    const parsedSpecsDetail =
+      typeof data.specs_detail === "string"
+        ? (() => {
+            try {
+              return JSON.parse(data.specs_detail);
+            } catch {
+              return undefined;
+            }
+          })()
+        : data.specs_detail;
+
+    // Parse product colors
+    let colorsInput = [];
+    if (typeof data.product_colors === "string") {
+      try {
+        colorsInput = JSON.parse(data.product_colors);
+      } catch {
+        colorsInput = [];
+      }
+    } else if (
+      Array.isArray(data.product_colors) &&
+      data.product_colors.length
+    ) {
+      colorsInput = data.product_colors;
+    } else if (Array.isArray(data.color)) {
+      // legacy fallback
+      colorsInput = data.color;
+    }
+
+    // Parse img array if sent as JSON string
+    const parsedImg =
+      typeof data.img === "string"
+        ? (() => {
+            try {
+              return JSON.parse(data.img);
+            } catch {
+              return data.img;
+            }
+          })()
+        : data.img;
+
+    // Helpers to safely parse IDs
+    const parseBigIntOrUndefined = (v) => {
+      if (v === undefined || v === null || v === "") return undefined;
+      const num = Number(v);
+      if (Number.isNaN(num)) return undefined;
+      return BigInt(num);
+    };
+    const parseSubCategory = (v) => {
+      if (v === undefined) return undefined;
+      if (v === null || v === "") return null;
+      const num = Number(v);
+      if (Number.isNaN(num)) return null;
+      return BigInt(num);
+    };
+
+    const updatedProduct = await prisma.$transaction(async (tx) => {
+      const updated = await tx.product.update({
+        where: { id: BigInt(req.params.id) },
+        data: {
+          name: data.name ?? undefined,
+          price: data.price !== undefined ? Number(data.price) : undefined,
+          discount:
+            data.discount !== undefined ? Number(data.discount) : undefined,
+          img: imageUrls ?? parsedImg ?? undefined,
+          specs: parsedSpecs ?? undefined,
+          specs_detail: parsedSpecsDetail ?? undefined,
+          category_id: parseBigIntOrUndefined(data.category_id),
+          sub_category_id: parseSubCategory(data.sub_category_id),
+        },
+      });
+
+      if (colorsInput.length > 0) {
+        await tx.productColor.deleteMany({
+          where: { product_id: BigInt(req.params.id) },
+        });
+        await tx.productColor.createMany({
+          data: colorsInput.map((c) => ({
+            product_id: BigInt(req.params.id),
+            name: c.name || "",
+            code: c.code || "",
+            quantity: Number(c.quantity || 0),
+          })),
+        });
+        const sumQty = colorsInput.reduce(
+          (sum, c) => sum + Number(c.quantity || 0),
+          0
+        );
+        await tx.product.update({
+          where: { id: BigInt(req.params.id) },
+          data: { quantity: sumQty },
+        });
+        updated.quantity = sumQty;
+      } else if (data.quantity !== undefined) {
+        await tx.product.update({
+          where: { id: BigInt(req.params.id) },
+          data: { quantity: Number(data.quantity) },
+        });
+        updated.quantity = Number(data.quantity);
+      }
+
+      return updated;
     });
 
     res.json({

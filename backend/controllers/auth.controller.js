@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/db.js";
 import cloudinary from "../lib/cloudinary.js";
+import nodemailer from "nodemailer";
 import { promisify } from "util";
 
 const generateAccessToken = (userId) => {
@@ -10,6 +11,32 @@ const generateAccessToken = (userId) => {
     "your-access-token-secret-key-change-in-production";
   return jwt.sign({ userId }, secret, {
     expiresIn: "7d",
+  });
+};
+
+// Helpers for OTP/email
+const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT || 587),
+  secure: process.env.SMTP_SECURE === "true", // true for 465, false for others
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+const sendEmail = async ({ to, subject, html }) => {
+  const from =
+    process.env.MAIL_FROM ||
+    process.env.SMTP_USER ||
+    "no-reply@example.com";
+  await transporter.sendMail({
+    from,
+    to,
+    subject,
+    html,
   });
 };
 
@@ -50,27 +77,44 @@ export const signup = async (req, res) => {
     }
 
     const hashed = await bcrypt.hash(password, 10);
+
+    const otp = generateOtp();
+    const expires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
     const user = await prisma.user.create({
       data: {
         name,
         email,
         password_digest: hashed,
+        email_verified: false,
+        verification_code: otp,
+        verification_expires_at: expires,
       },
     });
 
-    const accessToken = generateAccessToken(user.id.toString());
+    // send verification email
+    try {
+      await sendEmail({
+        to: email,
+        subject: "Verify your Tech Shop account",
+        html: `<p>Your verification code is:</p><h2>${otp}</h2><p>Code expires in 10 minutes.</p>`,
+      });
+    } catch (mailErr) {
+      console.error("Send verification email error:", mailErr);
+    }
 
     res.status(201).json({
       success: true,
-      message: "User created successfully",
+      message: "User created. Verification code sent to email.",
       data: {
-        accessToken,
+        verify_required: true,
         user: {
           id: user.id.toString(),
           name: user.name,
           email: user.email,
           role: user.role,
           phone: user.phone,
+          email_verified: user.email_verified,
         },
       },
     });
@@ -115,6 +159,13 @@ export const login = async (req, res) => {
       });
     }
 
+    if (!user.email_verified) {
+      return res.status(403).json({
+        success: false,
+        error: "Email not verified. Please verify your email.",
+      });
+    }
+
     const accessToken = generateAccessToken(user.id.toString());
 
     res.status(200).json({
@@ -128,6 +179,7 @@ export const login = async (req, res) => {
           email: user.email,
           role: user.role,
           phone: user.phone,
+          email_verified: user.email_verified,
         },
       },
     });
@@ -286,6 +338,176 @@ export const changePassword = async (req, res) => {
     res.json({ success: true, message: "Password changed successfully" });
   } catch (err) {
     console.error("Change password error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+};
+
+export const resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: "Email is required" });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { email, deleted_at: null },
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+    if (user.email_verified) {
+      return res.status(400).json({ success: false, error: "Email already verified" });
+    }
+
+    const otp = generateOtp();
+    const expires = new Date(Date.now() + 10 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        verification_code: otp,
+        verification_expires_at: expires,
+      },
+    });
+
+    await sendEmail({
+      to: email,
+      subject: "Verify your Tech Shop account",
+      html: `<p>Your verification code is:</p><h2>${otp}</h2><p>Code expires in 10 minutes.</p>`,
+    });
+
+    res.json({ success: true, message: "Verification code sent" });
+  } catch (err) {
+    console.error("Resend verification error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+};
+
+export const verifyEmail = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ success: false, error: "Email and code are required" });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { email, deleted_at: null },
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+    if (user.email_verified) {
+      return res.status(400).json({ success: false, error: "Email already verified" });
+    }
+    if (!user.verification_code || !user.verification_expires_at) {
+      return res.status(400).json({ success: false, error: "No verification code. Please request again." });
+    }
+    const now = new Date();
+    if (now > user.verification_expires_at) {
+      return res.status(400).json({ success: false, error: "Verification code expired" });
+    }
+    if (String(code).trim() !== user.verification_code) {
+      return res.status(400).json({ success: false, error: "Invalid verification code" });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        email_verified: true,
+        verification_code: null,
+        verification_expires_at: null,
+      },
+    });
+
+    res.json({ success: true, message: "Email verified successfully" });
+  } catch (err) {
+    console.error("Verify email error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+};
+
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: "Email is required" });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { email, deleted_at: null },
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+
+    const otp = generateOtp();
+    const expires = new Date(Date.now() + 10 * 60 * 1000);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        reset_code: otp,
+        reset_expires_at: expires,
+      },
+    });
+
+    await sendEmail({
+      to: email,
+      subject: "Reset your Tech Shop password",
+      html: `<p>Your password reset code is:</p><h2>${otp}</h2><p>Code expires in 10 minutes.</p>`,
+    });
+
+    res.json({ success: true, message: "Reset code sent to email" });
+  } catch (err) {
+    console.error("Forgot password error:", err);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, code, new_password } = req.body;
+    if (!email || !code || !new_password) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Email, code, and new password are required" });
+    }
+    if (new_password.length < 6) {
+      return res
+        .status(400)
+        .json({ success: false, error: "Password must be at least 6 characters" });
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { email, deleted_at: null },
+    });
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+    if (!user.reset_code || !user.reset_expires_at) {
+      return res.status(400).json({ success: false, error: "No reset code. Request again." });
+    }
+    const now = new Date();
+    if (now > user.reset_expires_at) {
+      return res.status(400).json({ success: false, error: "Reset code expired" });
+    }
+    if (String(code).trim() !== user.reset_code) {
+      return res.status(400).json({ success: false, error: "Invalid reset code" });
+    }
+
+    const hashed = await bcrypt.hash(new_password, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password_digest: hashed,
+        reset_code: null,
+        reset_expires_at: null,
+      },
+    });
+
+    res.json({ success: true, message: "Password reset successfully" });
+  } catch (err) {
+    console.error("Reset password error:", err);
     res.status(500).json({ success: false, error: "Internal server error" });
   }
 };

@@ -61,12 +61,13 @@ model Product {
   name            String
   price           Decimal   @db.Decimal(10, 2)
   discount        Decimal   @default(0.0) @db.Decimal(10, 2)
-  quantity        Int       @default(0)
+  quantity        Int       @default(0) // total stock (optional aggregate)
   sold            Int       @default(0)
   img             String[]  @db.Text
   specs           Json      @default("[]")
   specs_detail    Json      @default("[]")
-  color           Json      @default("[]")
+  color           Json      @default("[]") // legacy color list
+  product_colors  ProductColor[]
   category_id     BigInt
   sub_category_id BigInt?
   rating          Decimal?  @db.Decimal(3, 2)
@@ -90,6 +91,23 @@ model Product {
   @@map("products")
 }
 
+// Per-color inventory for a product
+model ProductColor {
+  id          BigInt   @id @default(autoincrement())
+  product_id  BigInt
+  name        String?
+  code        String?
+  quantity    Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
+
+  product Product @relation(fields: [product_id], references: [id])
+
+  @@unique([product_id, code])
+  @@map("product_colors")
+}
+
 model ProductSpec {
   id         BigInt    @id @default(autoincrement())
   label      String?
@@ -106,6 +124,11 @@ model User {
   name            String?
   email           String?   @unique
   password_digest String?
+  email_verified  Boolean   @default(false)
+  verification_code String?
+  verification_expires_at DateTime?
+  reset_code      String?
+  reset_expires_at DateTime?
   role            String?   @default("user")
   phone           String?
   address         String?
@@ -164,6 +187,8 @@ model Order {
   total_amount     Decimal?  @db.Decimal(10, 2)
   status           String?   @default("pending")
   shipping_address Json?
+  receiver_name    String?
+  receiver_phone   String?
   payment_method   String?
   coupon_id        BigInt?
   created_at       DateTime  @default(now())

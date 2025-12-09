@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/db.js";
 
 async function clearDatabase() {
+  await prisma.message.deleteMany();
+  await prisma.chat.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.cartItem.deleteMany();
@@ -10,6 +12,7 @@ async function clearDatabase() {
   await prisma.review.deleteMany();
   await prisma.wishlist.deleteMany();
   await prisma.filterOption.deleteMany();
+  await prisma.productColor.deleteMany();
   await prisma.product.deleteMany();
   await prisma.subCategory.deleteMany();
   await prisma.category.deleteMany();
@@ -19,7 +22,7 @@ async function clearDatabase() {
 
 async function seedUsers() {
   const password = await bcrypt.hash("password123", 10);
-  
+
   const users = [
     {
       name: "Admin User",
@@ -85,9 +88,11 @@ async function seedUsers() {
     },
   ];
 
-  const createdUsers = await Promise.all(
-    users.map((user) => prisma.user.create({ data: user }))
-  );
+  const createdUsers = [];
+  for (let i = 0; i < users.length; i++) {
+    const created = await prisma.user.create({ data: users[i] });
+    createdUsers.push(created);
+  }
 
   return { admin: createdUsers[0], users: createdUsers };
 }
@@ -519,9 +524,30 @@ async function seedProducts(categories, subCategories) {
     },
   ];
 
-  const createdProducts = await Promise.all(
-    products.map((product) => prisma.product.create({ data: product }))
-  );
+  // Create products with per-color quantities
+  const createdProducts = [];
+  for (const product of products) {
+    const colors = Array.isArray(product.color) ? product.color : [];
+    const totalQty =
+      colors.length > 0
+        ? colors.reduce((sum, c) => sum + Number(c.quantity || 0), 0)
+        : product.quantity || 0;
+
+    const created = await prisma.product.create({
+      data: {
+        ...product,
+        quantity: totalQty,
+        product_colors: {
+          create: colors.map((c) => ({
+            name: c.name || "",
+            code: c.code || "",
+            quantity: Number(c.quantity || 0),
+          })),
+        },
+      },
+    });
+    createdProducts.push(created);
+  }
 
   return createdProducts;
 }
@@ -529,48 +555,216 @@ async function seedProducts(categories, subCategories) {
 async function seedFilterOptions(categories) {
   const filterOptions = [
     // Brand filters (global)
-    { key: "brand", label: "Brand", value: "Apple", category_id: null, order: 1 },
-    { key: "brand", label: "Brand", value: "Samsung", category_id: null, order: 2 },
-    { key: "brand", label: "Brand", value: "ASUS", category_id: null, order: 3 },
-    { key: "brand", label: "Brand", value: "Sony", category_id: null, order: 4 },
-    { key: "brand", label: "Brand", value: "Canon", category_id: null, order: 5 },
-    { key: "brand", label: "Brand", value: "Microsoft", category_id: null, order: 6 },
-    { key: "brand", label: "Brand", value: "Dell", category_id: null, order: 7 },
-    
+    {
+      key: "brand",
+      label: "Brand",
+      value: "Apple",
+      category_id: null,
+      order: 1,
+    },
+    {
+      key: "brand",
+      label: "Brand",
+      value: "Samsung",
+      category_id: null,
+      order: 2,
+    },
+    {
+      key: "brand",
+      label: "Brand",
+      value: "ASUS",
+      category_id: null,
+      order: 3,
+    },
+    {
+      key: "brand",
+      label: "Brand",
+      value: "Sony",
+      category_id: null,
+      order: 4,
+    },
+    {
+      key: "brand",
+      label: "Brand",
+      value: "Canon",
+      category_id: null,
+      order: 5,
+    },
+    {
+      key: "brand",
+      label: "Brand",
+      value: "Microsoft",
+      category_id: null,
+      order: 6,
+    },
+    {
+      key: "brand",
+      label: "Brand",
+      value: "Dell",
+      category_id: null,
+      order: 7,
+    },
+
     // RAM filters (global)
     { key: "ram", label: "RAM", value: "8GB", category_id: null, order: 1 },
     { key: "ram", label: "RAM", value: "12GB", category_id: null, order: 2 },
     { key: "ram", label: "RAM", value: "16GB", category_id: null, order: 3 },
     { key: "ram", label: "RAM", value: "32GB", category_id: null, order: 4 },
-    
+
     // Processor filters (global)
-    { key: "processor", label: "Processor", value: "A17 Pro", category_id: null, order: 1 },
-    { key: "processor", label: "Processor", value: "M3 Max", category_id: null, order: 2 },
-    { key: "processor", label: "Processor", value: "M2", category_id: null, order: 3 },
-    { key: "processor", label: "Processor", value: "Snapdragon 8 Gen 3", category_id: null, order: 4 },
-    { key: "processor", label: "Processor", value: "Snapdragon 8 Gen 2", category_id: null, order: 5 },
-    { key: "processor", label: "Processor", value: "Intel i7-13700H", category_id: null, order: 6 },
-    
+    {
+      key: "processor",
+      label: "Processor",
+      value: "A17 Pro",
+      category_id: null,
+      order: 1,
+    },
+    {
+      key: "processor",
+      label: "Processor",
+      value: "M3 Max",
+      category_id: null,
+      order: 2,
+    },
+    {
+      key: "processor",
+      label: "Processor",
+      value: "M2",
+      category_id: null,
+      order: 3,
+    },
+    {
+      key: "processor",
+      label: "Processor",
+      value: "Snapdragon 8 Gen 3",
+      category_id: null,
+      order: 4,
+    },
+    {
+      key: "processor",
+      label: "Processor",
+      value: "Snapdragon 8 Gen 2",
+      category_id: null,
+      order: 5,
+    },
+    {
+      key: "processor",
+      label: "Processor",
+      value: "Intel i7-13700H",
+      category_id: null,
+      order: 6,
+    },
+
     // Screen Size filters (global)
-    { key: "screen_size", label: "Screen Size", value: "6.7 inch", category_id: null, order: 1 },
-    { key: "screen_size", label: "Screen Size", value: "6.8 inch", category_id: null, order: 2 },
-    { key: "screen_size", label: "Screen Size", value: "11 inch", category_id: null, order: 3 },
-    { key: "screen_size", label: "Screen Size", value: "12.9 inch", category_id: null, order: 4 },
-    { key: "screen_size", label: "Screen Size", value: "14 inch", category_id: null, order: 5 },
-    { key: "screen_size", label: "Screen Size", value: "16 inch", category_id: null, order: 6 },
-    { key: "screen_size", label: "Screen Size", value: "16.2 inch", category_id: null, order: 7 },
-    
+    {
+      key: "screen_size",
+      label: "Screen Size",
+      value: "6.7 inch",
+      category_id: null,
+      order: 1,
+    },
+    {
+      key: "screen_size",
+      label: "Screen Size",
+      value: "6.8 inch",
+      category_id: null,
+      order: 2,
+    },
+    {
+      key: "screen_size",
+      label: "Screen Size",
+      value: "11 inch",
+      category_id: null,
+      order: 3,
+    },
+    {
+      key: "screen_size",
+      label: "Screen Size",
+      value: "12.9 inch",
+      category_id: null,
+      order: 4,
+    },
+    {
+      key: "screen_size",
+      label: "Screen Size",
+      value: "14 inch",
+      category_id: null,
+      order: 5,
+    },
+    {
+      key: "screen_size",
+      label: "Screen Size",
+      value: "16 inch",
+      category_id: null,
+      order: 6,
+    },
+    {
+      key: "screen_size",
+      label: "Screen Size",
+      value: "16.2 inch",
+      category_id: null,
+      order: 7,
+    },
+
     // GPU Brand filters (global)
-    { key: "gpu_brand", label: "GPU Brand", value: "Apple", category_id: null, order: 1 },
-    { key: "gpu_brand", label: "GPU Brand", value: "NVIDIA", category_id: null, order: 2 },
-    { key: "gpu_brand", label: "GPU Brand", value: "AMD", category_id: null, order: 3 },
-    
+    {
+      key: "gpu_brand",
+      label: "GPU Brand",
+      value: "Apple",
+      category_id: null,
+      order: 1,
+    },
+    {
+      key: "gpu_brand",
+      label: "GPU Brand",
+      value: "NVIDIA",
+      category_id: null,
+      order: 2,
+    },
+    {
+      key: "gpu_brand",
+      label: "GPU Brand",
+      value: "AMD",
+      category_id: null,
+      order: 3,
+    },
+
     // Drive Size filters (global)
-    { key: "drive_size", label: "Drive Size", value: "128GB", category_id: null, order: 1 },
-    { key: "drive_size", label: "Drive Size", value: "256GB", category_id: null, order: 2 },
-    { key: "drive_size", label: "Drive Size", value: "512GB SSD", category_id: null, order: 3 },
-    { key: "drive_size", label: "Drive Size", value: "1TB SSD", category_id: null, order: 4 },
-    { key: "drive_size", label: "Drive Size", value: "825GB SSD", category_id: null, order: 5 },
+    {
+      key: "drive_size",
+      label: "Drive Size",
+      value: "128GB",
+      category_id: null,
+      order: 1,
+    },
+    {
+      key: "drive_size",
+      label: "Drive Size",
+      value: "256GB",
+      category_id: null,
+      order: 2,
+    },
+    {
+      key: "drive_size",
+      label: "Drive Size",
+      value: "512GB SSD",
+      category_id: null,
+      order: 3,
+    },
+    {
+      key: "drive_size",
+      label: "Drive Size",
+      value: "1TB SSD",
+      category_id: null,
+      order: 4,
+    },
+    {
+      key: "drive_size",
+      label: "Drive Size",
+      value: "825GB SSD",
+      category_id: null,
+      order: 5,
+    },
   ];
 
   await prisma.filterOption.createMany({ data: filterOptions });
@@ -665,7 +859,7 @@ async function seedCoupons() {
 
 async function seedOrders(users, products) {
   const orders = [];
-  
+
   for (let i = 0; i < 7; i++) {
     const user = users[Math.floor(Math.random() * users.length)];
     const product = products[Math.floor(Math.random() * products.length)];
@@ -678,13 +872,22 @@ async function seedOrders(users, products) {
         user_id: user.id,
         order_number: `ORD-${Date.now()}-${i}`,
         total_amount: totalPrice,
-        status: ["pending", "confirmed", "processing", "shipped", "delivered"][i % 5],
-        payment_method: ["credit_card", "debit_card", "cash_on_delivery", "paypal"][i % 4],
+        status: ["pending", "confirmed", "processing", "shipped", "delivered"][
+          i % 5
+        ],
+        payment_method: [
+          "credit_card",
+          "debit_card",
+          "cash_on_delivery",
+          "paypal",
+        ][i % 4],
         shipping_address: {
           street: `${Math.floor(Math.random() * 999) + 1} Sample Street`,
           city: ["HCMC", "Hanoi", "Da Nang", "Nha Trang"][i % 4],
           country: "VN",
         },
+        receiver_name: user.name || "Customer",
+        receiver_phone: user.phone || "0000000000",
         order_items: {
           create: [
             {
@@ -692,13 +895,15 @@ async function seedOrders(users, products) {
               quantity: quantity,
               unit_price: unitPrice,
               total_price: totalPrice,
-              color: Array.isArray(product.color) && product.color[0]?.name || null,
+              color:
+                (Array.isArray(product.color) && product.color[0]?.name) ||
+                null,
             },
           ],
         },
       },
     });
-    
+
     orders.push(order);
   }
 
@@ -733,7 +938,7 @@ async function seedReviews(users, products) {
         comment: comments[i % comments.length],
       },
     });
-    
+
     reviews.push(review);
   }
 
@@ -742,10 +947,15 @@ async function seedReviews(users, products) {
 
 async function seedCarts(users, products) {
   const carts = [];
-  
+
   for (let i = 0; i < 7; i++) {
     const user = users[Math.floor(Math.random() * users.length)];
     const product = products[Math.floor(Math.random() * products.length)];
+    const colorChoices = Array.isArray(product.color) ? product.color : [];
+    const chosenColor =
+      colorChoices.length > 0
+        ? colorChoices[Math.floor(Math.random() * colorChoices.length)]
+        : null;
 
     const cart = await prisma.cart.create({
       data: {
@@ -754,14 +964,16 @@ async function seedCarts(users, products) {
           create: [
             {
               product_id: product.id,
-              quantity: Math.floor(Math.random() * 3) + 1,
-              color: Array.isArray(product.color) && product.color[0] || {},
+              quantity: 1,
+              color: chosenColor
+                ? { name: chosenColor.name || "", code: chosenColor.code || "" }
+                : {},
             },
           ],
         },
       },
     });
-    
+
     carts.push(cart);
   }
 
@@ -770,7 +982,7 @@ async function seedCarts(users, products) {
 
 async function seedWishlists(users, products) {
   const wishlists = [];
-  
+
   for (let i = 0; i < 7; i++) {
     const user = users[Math.floor(Math.random() * users.length)];
     const product = products[Math.floor(Math.random() * products.length)];
@@ -902,40 +1114,40 @@ async function seedSettings() {
 async function main() {
   console.log("Seeding database...");
   await clearDatabase();
-  
+
   const { admin, users } = await seedUsers();
   console.log(`✓ Created ${users.length} users`);
-  
+
   const categories = await seedCategories();
   console.log(`✓ Created ${categories.length} categories`);
-  
+
   const subCategories = await seedSubCategories(categories);
   console.log(`✓ Created ${subCategories.length} subcategories`);
-  
+
   const products = await seedProducts(categories, subCategories);
   console.log(`✓ Created ${products.length} products`);
-  
+
   await seedFilterOptions(categories);
   console.log(`✓ Created filter options`);
-  
+
   await seedCoupons();
   console.log(`✓ Created 8 coupons`);
-  
+
   const orders = await seedOrders(users, products);
   console.log(`✓ Created ${orders.length} orders`);
-  
+
   const reviews = await seedReviews(users, products);
   console.log(`✓ Created ${reviews.length} reviews`);
-  
+
   const carts = await seedCarts(users, products);
   console.log(`✓ Created ${carts.length} carts`);
-  
+
   const wishlists = await seedWishlists(users, products);
   console.log(`✓ Created ${wishlists.length} wishlists`);
-  
+
   await seedSettings();
   console.log(`✓ Created default settings`);
-  
+
   console.log("\n✅ Seed completed successfully!");
   console.log({
     admin: { id: admin.id?.toString?.(), email: admin.email },

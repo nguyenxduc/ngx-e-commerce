@@ -9,22 +9,62 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ message: "No order items provided" });
     }
 
-    // validate products and compute totals
+    // validate products and compute totals (with color stock)
     let totalAmount = 0;
     const orderItemsData = [];
+    const orderItemColors = []; // keep parsed color objects for stock decrement
     for (const it of items) {
       const product = await prisma.product.findFirst({
         where: { id: BigInt(it.product_id), deleted_at: null },
+        include: { product_colors: true },
       });
       if (!product)
         return res
           .status(400)
           .json({ message: `Product ${it.product_id} not found` });
-      if (product.quantity < it.quantity) {
-        return res
-          .status(400)
-          .json({ message: `Insufficient stock for ${product.name}` });
+
+      const colorVal =
+        typeof it.color === "string"
+          ? (() => {
+              try {
+                return JSON.parse(it.color);
+              } catch {
+                return { name: it.color, code: "" };
+              }
+            })()
+          : it.color || null;
+
+      let productColor = null;
+      if (colorVal && (colorVal.code || colorVal.name)) {
+        productColor = product.product_colors.find(
+          (c) =>
+            (colorVal.code && c.code === colorVal.code) ||
+            (colorVal.name && c.name === colorVal.name)
+        );
+        if (!productColor) {
+          return res.status(400).json({
+            message: `Color not available for product ${product.name}`,
+          });
+        }
+        if (productColor.quantity < it.quantity) {
+          return res.status(400).json({
+            message: `Insufficient stock for color ${
+              productColor.name || productColor.code
+            }`,
+          });
+        }
+      } else if (product.product_colors.length > 0) {
+        return res.status(400).json({
+          message: `Color required for product ${product.name}`,
+        });
+      } else {
+        if (product.quantity < it.quantity) {
+          return res.status(400).json({
+            message: `Insufficient stock for ${product.name}`,
+          });
+        }
       }
+
       const unitPrice = product.price;
       const totalPrice = Number(unitPrice) * Number(it.quantity);
       totalAmount += totalPrice;
@@ -33,22 +73,56 @@ export const createOrder = async (req, res) => {
         quantity: it.quantity,
         unit_price: unitPrice,
         total_price: totalPrice,
-        color: it.color ?? null,
+        color: colorVal ? JSON.stringify(colorVal) : null,
       });
+      orderItemColors.push(colorVal);
     }
 
     // apply coupon if provided (optional)
     let couponId = null;
+    let couponDiscount = 0;
     if (coupon_code) {
-      const coupon = await prisma.coupon.findUnique({
-        where: { code: coupon_code },
+      const coupon = await prisma.coupon.findFirst({
+        where: { code: coupon_code, deleted_at: null },
       });
-      if (coupon) couponId = coupon.id;
+
+      // Validate coupon
+      if (!coupon) {
+        return res.status(400).json({ message: "Invalid coupon code" });
+      }
+      const now = new Date();
+      if (coupon.expires_at && now > coupon.expires_at) {
+        return res.status(400).json({ message: "Coupon has expired" });
+      }
+      if (
+        coupon.usage_limit !== null &&
+        coupon.used_count !== null &&
+        coupon.used_count >= coupon.usage_limit
+      ) {
+        return res.status(400).json({ message: "Coupon usage limit reached" });
+      }
+      if (coupon.min_order && Number(totalAmount) < Number(coupon.min_order)) {
+        return res
+          .status(400)
+          .json({ message: "Order does not meet minimum amount" });
+      }
+
+      // Compute discount
+      if (coupon.discount_type === "percent") {
+        couponDiscount =
+          (Number(totalAmount) * Number(coupon.discount_value)) / 100;
+      } else {
+        couponDiscount = Number(coupon.discount_value);
+      }
+
+      couponId = coupon.id;
     }
+
+    const finalAmount = Math.max(0, Number(totalAmount) - couponDiscount);
 
     // Parse shipping_address if it's a string
     let parsedShippingAddress = shipping_address;
-    if (typeof shipping_address === 'string') {
+    if (typeof shipping_address === "string") {
       try {
         parsedShippingAddress = JSON.parse(shipping_address);
       } catch {
@@ -56,34 +130,58 @@ export const createOrder = async (req, res) => {
       }
     }
 
-    const created = await prisma.order.create({
-      data: {
-        user_id: BigInt(userId),
-        order_number: `ORD-${Date.now()}`,
-        total_amount: totalAmount,
-        status: "pending",
-        shipping_address: parsedShippingAddress ?? null,
-        payment_method: payment_method ?? null,
-        coupon_id: couponId,
-        order_items: { createMany: { data: orderItemsData } },
-      },
-      include: { order_items: true },
+    const created = await prisma.$transaction(async (tx) => {
+      const createdOrder = await tx.order.create({
+        data: {
+          user_id: BigInt(userId),
+          order_number: `ORD-${Date.now()}`,
+          total_amount: finalAmount,
+          status: "pending",
+          shipping_address: parsedShippingAddress ?? null,
+          receiver_name: parsedShippingAddress?.name || null,
+          receiver_phone: parsedShippingAddress?.phone || null,
+          payment_method: payment_method ?? null,
+          coupon_id: couponId,
+          order_items: { createMany: { data: orderItemsData } },
+        },
+        include: { order_items: true },
+      });
+
+      // decrement stock and increment sold
+      for (let i = 0; i < orderItemsData.length; i++) {
+        const it = orderItemsData[i];
+        const colorObj = orderItemColors[i];
+        // decrement product color if applicable
+        if (colorObj && (colorObj.code || colorObj.name)) {
+          await tx.productColor.updateMany({
+            where: {
+              product_id: it.product_id,
+              OR: [
+                colorObj.code ? { code: colorObj.code } : undefined,
+                colorObj.name ? { name: colorObj.name } : undefined,
+              ].filter(Boolean),
+            },
+            data: { quantity: { decrement: it.quantity } },
+          });
+        }
+        await tx.product.update({
+          where: { id: it.product_id },
+          data: {
+            quantity: { decrement: it.quantity },
+            sold: { increment: it.quantity },
+          },
+        });
+      }
+
+      return createdOrder;
     });
 
-    // decrement stock and increment sold
-    for (const it of orderItemsData) {
-      await prisma.product.update({
-        where: { id: it.product_id },
-        data: {
-          quantity: { decrement: it.quantity },
-          sold: { increment: it.quantity },
-        },
-      });
-    }
-
-    res
-      .status(201)
-      .json({ message: "Order created successfully", order: created });
+    res.status(201).json({
+      message: "Order created successfully",
+      order: created,
+      discount: couponDiscount,
+      finalAmount,
+    });
   } catch (error) {
     res
       .status(500)
@@ -110,12 +208,6 @@ export const getOrderById = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    // if (order.user_id.toString() !== userId && req.user.role !== "admin") {
-    //   return res
-    //     .status(403)
-    //     .json({ message: "Not authorized to view this order" });
-    // }
-
     res.json(order);
   } catch (error) {
     res
@@ -130,7 +222,13 @@ export const getUserOrders = async (req, res) => {
     const orders = await prisma.order.findMany({
       where: { user_id: BigInt(userId), deleted_at: null },
       orderBy: { created_at: "desc" },
-      include: { order_items: true },
+      include: {
+        order_items: {
+          include: {
+            product: true,
+          },
+        },
+      },
     });
     res.json(orders);
   } catch (error) {
@@ -205,15 +303,39 @@ export const updateOrderStatus = async (req, res) => {
       return res.status(404).json({ message: "Order not found" });
     }
 
-    if (status === "cancelled" && order.status !== "pending") {
-      return res
-        .status(400)
-        .json({ message: "Cannot cancel order in current status" });
+    // Admin route: allow cancel in any status, but avoid double-cancel
+    if (status === "cancelled" && order.status === "cancelled") {
+      return res.status(400).json({ message: "Order already cancelled" });
     }
 
-    if (status === "cancelled" && order.status === "pending") {
-      for (const item of order.order_items) {
-        await prisma.product.update({
+    const restockItems = async (tx, items) => {
+      for (const item of items) {
+        // parse color if stored as JSON string
+        let colorObj = null;
+        if (typeof item.color === "string") {
+          try {
+            colorObj = JSON.parse(item.color);
+          } catch {
+            colorObj = null;
+          }
+        }
+
+        if (colorObj && (colorObj.code || colorObj.name)) {
+          await tx.productColor.updateMany({
+            where: {
+              product_id: item.product_id,
+              OR: [
+                colorObj.code ? { code: colorObj.code } : undefined,
+                colorObj.name ? { name: colorObj.name } : undefined,
+              ].filter(Boolean),
+            },
+            data: {
+              quantity: { increment: item.quantity },
+            },
+          });
+        }
+
+        await tx.product.update({
           where: { id: item.product_id },
           data: {
             quantity: { increment: item.quantity },
@@ -221,6 +343,10 @@ export const updateOrderStatus = async (req, res) => {
           },
         });
       }
+    };
+
+    if (status === "cancelled" && order.status !== "cancelled") {
+      await restockItems(prisma, order.order_items);
     }
 
     const updatedOrder = await prisma.order.update({
@@ -297,20 +423,53 @@ export const cancelOrder = async (req, res) => {
       return res
         .status(403)
         .json({ success: false, message: "Not authorized" });
-    if (!["pending", "confirmed"].includes(order.status || ""))
+    if (
+      req.user.role !== "admin" &&
+      !["pending", "processing"].includes(order.status || "")
+    )
       return res
         .status(400)
         .json({ success: false, message: "Cannot cancel in current status" });
+    if (order.status === "cancelled")
+      return res
+        .status(400)
+        .json({ success: false, message: "Order already cancelled" });
 
-    for (const item of order.order_items) {
-      await prisma.product.update({
-        where: { id: item.product_id },
-        data: {
-          quantity: { increment: item.quantity },
-          sold: { decrement: item.quantity },
-        },
-      });
-    }
+    const restockItems = async (tx, items) => {
+      for (const item of items) {
+        let colorObj = null;
+        if (typeof item.color === "string") {
+          try {
+            colorObj = JSON.parse(item.color);
+          } catch {
+            colorObj = null;
+          }
+        }
+
+        if (colorObj && (colorObj.code || colorObj.name)) {
+          await tx.productColor.updateMany({
+            where: {
+              product_id: item.product_id,
+              OR: [
+                colorObj.code ? { code: colorObj.code } : undefined,
+                colorObj.name ? { name: colorObj.name } : undefined,
+              ].filter(Boolean),
+            },
+            data: { quantity: { increment: item.quantity } },
+          });
+        }
+
+        await tx.product.update({
+          where: { id: item.product_id },
+          data: {
+            quantity: { increment: item.quantity },
+            sold: { decrement: item.quantity },
+          },
+        });
+      }
+    };
+
+    await restockItems(prisma, order.order_items);
 
     const updated = await prisma.order.update({
       where: { id: BigInt(id) },
