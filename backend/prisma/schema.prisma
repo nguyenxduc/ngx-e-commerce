@@ -82,6 +82,7 @@ model Product {
   order_items  OrderItem[]
   cart_items   CartItem[]
   wishlists    Wishlist[]
+  embedding    ProductEmbedding? @relation("ProductEmbedding")
 
   @@index([name])
   @@index([category_id])
@@ -89,6 +90,17 @@ model Product {
   @@index([price])
   @@index([rating])
   @@map("products")
+}
+
+model ProductEmbedding {
+  product_id BigInt   @id
+  content    String?
+  embedding  Unsupported("vector")
+  updated_at DateTime @default(now())
+
+  product Product @relation("ProductEmbedding", fields: [product_id], references: [id])
+
+  @@map("product_embeddings")
 }
 
 // Per-color inventory for a product
@@ -145,6 +157,7 @@ model User {
   coupons   Coupon[]   @relation("UserCoupons")
   chats     Chat[]
   messages  Message[]  @relation("MessageSender")
+  ai_chats  AiChat[]
 
   @@map("users")
 }
@@ -378,4 +391,35 @@ model Message {
   @@index([sender_id])
   @@index([is_read])
   @@map("messages")
+}
+
+model AiChat {
+  id         BigInt     @id @default(autoincrement())
+  user_id    BigInt
+  title      String?
+  thread_key String     @unique
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+
+  user     User       @relation(fields: [user_id], references: [id])
+  messages AiMessage[]
+
+  @@index([user_id])
+  @@index([updated_at])
+  @@map("ai_chats")
+}
+
+model AiMessage {
+  id         BigInt   @id @default(autoincrement())
+  ai_chat_id BigInt
+  role       String
+  content    String
+  metadata   Json?    @default("{}")
+  created_at DateTime @default(now())
+
+  ai_chat AiChat @relation(fields: [ai_chat_id], references: [id])
+
+  @@index([ai_chat_id])
+  @@index([created_at])
+  @@map("ai_messages")
 }

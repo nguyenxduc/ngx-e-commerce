@@ -23,6 +23,7 @@ import paymentRoutes from "./routes/payment.route.js";
 import settingRoutes from "./routes/setting.route.js";
 import chatRoutes from "./routes/chat.route.js";
 import dashboardRoutes from "./routes/dashboard.route.js";
+import aiAssistantRoutes from "./routes/aiAssistant.route.js";
 
 import cors from "cors";
 
@@ -60,6 +61,7 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/settings", settingRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/ai-assistant", aiAssistantRoutes);
 
 // Setup Socket.io
 const io = new Server(server, {
