@@ -15,7 +15,8 @@ const generateAccessToken = (userId) => {
 };
 
 // Helpers for OTP/email
-const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+const generateOtp = () =>
+  Math.floor(100000 + Math.random() * 900000).toString();
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -29,9 +30,7 @@ const transporter = nodemailer.createTransport({
 
 const sendEmail = async ({ to, subject, html }) => {
   const from =
-    process.env.MAIL_FROM ||
-    process.env.SMTP_USER ||
-    "no-reply@example.com";
+    process.env.MAIL_FROM || process.env.SMTP_USER || "no-reply@example.com";
   await transporter.sendMail({
     from,
     to,
@@ -236,6 +235,7 @@ export const getProfile = async (req, res) => {
         email: user.email,
         role: user.role,
         phone: user.phone,
+        address: user.address,
         avatar: user.avatar,
         createdAt: user.created_at,
         updatedAt: user.updated_at,
@@ -284,6 +284,7 @@ export const updateProfile = async (req, res) => {
         email: updatedUser.email,
         role: updatedUser.role,
         phone: updatedUser.phone,
+        address: updatedUser.address,
         avatar: updatedUser.avatar,
         createdAt: updatedUser.created_at,
         updatedAt: updatedUser.updated_at,
@@ -346,7 +347,9 @@ export const resendVerification = async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
-      return res.status(400).json({ success: false, error: "Email is required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Email is required" });
     }
 
     const user = await prisma.user.findFirst({
@@ -356,7 +359,9 @@ export const resendVerification = async (req, res) => {
       return res.status(404).json({ success: false, error: "User not found" });
     }
     if (user.email_verified) {
-      return res.status(400).json({ success: false, error: "Email already verified" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Email already verified" });
     }
 
     const otp = generateOtp();
@@ -387,7 +392,9 @@ export const verifyEmail = async (req, res) => {
   try {
     const { email, code } = req.body;
     if (!email || !code) {
-      return res.status(400).json({ success: false, error: "Email and code are required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Email and code are required" });
     }
 
     const user = await prisma.user.findFirst({
@@ -397,17 +404,26 @@ export const verifyEmail = async (req, res) => {
       return res.status(404).json({ success: false, error: "User not found" });
     }
     if (user.email_verified) {
-      return res.status(400).json({ success: false, error: "Email already verified" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Email already verified" });
     }
     if (!user.verification_code || !user.verification_expires_at) {
-      return res.status(400).json({ success: false, error: "No verification code. Please request again." });
+      return res.status(400).json({
+        success: false,
+        error: "No verification code. Please request again.",
+      });
     }
     const now = new Date();
     if (now > user.verification_expires_at) {
-      return res.status(400).json({ success: false, error: "Verification code expired" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Verification code expired" });
     }
     if (String(code).trim() !== user.verification_code) {
-      return res.status(400).json({ success: false, error: "Invalid verification code" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid verification code" });
     }
 
     await prisma.user.update({
@@ -430,7 +446,9 @@ export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
-      return res.status(400).json({ success: false, error: "Email is required" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Email is required" });
     }
 
     const user = await prisma.user.findFirst({
@@ -468,14 +486,16 @@ export const resetPassword = async (req, res) => {
   try {
     const { email, code, new_password } = req.body;
     if (!email || !code || !new_password) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Email, code, and new password are required" });
+      return res.status(400).json({
+        success: false,
+        error: "Email, code, and new password are required",
+      });
     }
     if (new_password.length < 6) {
-      return res
-        .status(400)
-        .json({ success: false, error: "Password must be at least 6 characters" });
+      return res.status(400).json({
+        success: false,
+        error: "Password must be at least 6 characters",
+      });
     }
 
     const user = await prisma.user.findFirst({
@@ -485,14 +505,20 @@ export const resetPassword = async (req, res) => {
       return res.status(404).json({ success: false, error: "User not found" });
     }
     if (!user.reset_code || !user.reset_expires_at) {
-      return res.status(400).json({ success: false, error: "No reset code. Request again." });
+      return res
+        .status(400)
+        .json({ success: false, error: "No reset code. Request again." });
     }
     const now = new Date();
     if (now > user.reset_expires_at) {
-      return res.status(400).json({ success: false, error: "Reset code expired" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Reset code expired" });
     }
     if (String(code).trim() !== user.reset_code) {
-      return res.status(400).json({ success: false, error: "Invalid reset code" });
+      return res
+        .status(400)
+        .json({ success: false, error: "Invalid reset code" });
     }
 
     const hashed = await bcrypt.hash(new_password, 10);

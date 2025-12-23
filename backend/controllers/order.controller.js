@@ -266,10 +266,10 @@ export const getAllOrders = async (req, res) => {
     res.json({
       orders,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.max(1, Math.ceil(total / Number(limit))),
+        current_page: Number(page),
+        per_page: Number(limit),
+        total_count: total,
+        total_pages: Math.max(1, Math.ceil(total / Number(limit))),
       },
     });
   } catch (error) {

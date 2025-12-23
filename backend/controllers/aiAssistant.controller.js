@@ -226,6 +226,7 @@ export const deleteAiChat = async (req, res) => {
     });
   } catch (error) {
     console.error("deleteAiChat error:", error);
+
     return res.status(500).json({
       success: false,
       error: "Không thể xóa hội thoại",

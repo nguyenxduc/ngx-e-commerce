@@ -48,6 +48,7 @@ export const createProduct = async (req, res) => {
       product_colors = [], // [{name, code, quantity}]
       category_id,
       sub_category_id,
+      description = "",
     } = req.body;
 
     const parseBigIntOrUndefined = (v) => {
@@ -97,6 +98,7 @@ export const createProduct = async (req, res) => {
           color, // keep legacy
           category_id: parseBigIntOrUndefined(category_id),
           sub_category_id: parseSubCategory(sub_category_id),
+          description: String(description),
         },
       });
 
@@ -171,6 +173,12 @@ export const getAllProducts = async (req, res) => {
       }
     });
 
+    // Special handling for discount parameter
+    // If discount is not "true", treat it as a dynamic filter
+    if (discount && discount !== "true") {
+      filterParams.discount = discount;
+    }
+
     const where = {};
     if (search) where.name = { contains: String(search), mode: "insensitive" };
     if (category_id) where.category_id = BigInt(category_id);
@@ -193,15 +201,12 @@ export const getAllProducts = async (req, res) => {
     const skip = (Number(page) - 1) * Number(limit);
     const take = Number(limit);
 
-    // Get all products first (before filtering by specs)
-    // Note: We fetch all products because Prisma doesn't easily support filtering JSON array fields
     const allProducts = await prisma.product.findMany({
       where: { ...where, deleted_at: null },
       orderBy,
       include: { product_colors: true },
     });
 
-    // If no filter parameters, return paginated results directly
     if (Object.keys(filterParams).length === 0) {
       const total = allProducts.length;
       const paginatedProducts = allProducts.slice(skip, skip + take);
@@ -220,150 +225,214 @@ export const getAllProducts = async (req, res) => {
       });
     }
 
-    // Fetch FilterOptions to build dynamic filter mapping
-    // Get active filter options (both global and category-specific if category_id exists)
-    const filterOptionWhere = {
-      is_active: true,
-    };
-
-    if (category_id) {
-      filterOptionWhere.OR = [
-        { category_id: null }, // Global filters
-        { category_id: BigInt(category_id) }, // Category-specific filters
-      ];
-    } else {
-      filterOptionWhere.category_id = null; // Only global filters
-    }
-
-    const filterOptions = await prisma.filterOption.findMany({
-      where: filterOptionWhere,
-      select: {
-        key: true,
-        label: true,
-        value: true,
+    // Get filter keys and options for building filter logic
+    const filterKeys = await prisma.filterKey.findMany({
+      where: { is_active: true },
+      include: {
+        filter_options: {
+          where: { is_active: true },
+          select: {
+            id: true,
+            value: true,
+            display_value: true,
+            query_value: true,
+            category_id: true,
+          },
+        },
       },
     });
 
-    // Build a map of filter keys to their possible labels/keys
-    // This allows flexible matching (e.g., "brand" can match "Brand", "brand", etc.)
+    // Build filter key mapping and query value mapping
     const filterKeyMap = new Map();
-    filterOptions.forEach((option) => {
-      const key = option.key.toLowerCase();
-      if (!filterKeyMap.has(key)) {
-        filterKeyMap.set(key, {
-          keys: new Set([key, option.key.toLowerCase()]),
-          labels: new Set([option.label?.toLowerCase()]),
-        });
-      } else {
-        const existing = filterKeyMap.get(key);
-        existing.keys.add(key);
-        existing.keys.add(option.key.toLowerCase());
-        if (option.label) {
-          existing.labels.add(option.label.toLowerCase());
+    const queryValueMap = new Map();
+
+    filterKeys.forEach((filterKey) => {
+      const key = filterKey.key.toLowerCase();
+      filterKeyMap.set(key, {
+        id: filterKey.id,
+        key: filterKey.key,
+        label: filterKey.label,
+        data_type: filterKey.data_type,
+      });
+
+      // Build query value mapping from options
+      filterKey.filter_options.forEach((option) => {
+        const displayValue = option.display_value || option.value;
+        const queryValue = option.query_value || option.value;
+        if (displayValue && queryValue) {
+          queryValueMap.set(displayValue.toLowerCase(), queryValue);
         }
-      }
+      });
     });
 
-    // Helper function to check if a product matches filter values
-    const matchesFilter = (product, queryKey, filterValues) => {
-      if (!filterValues || filterValues.length === 0) return true;
+    // Filter products based on ProductFilterValue table
+    let filteredProductIds = new Set();
+    let isFirstFilter = true;
 
-      const values = Array.isArray(filterValues)
-        ? filterValues
-        : String(filterValues)
+    for (const [filterParam, filterValue] of Object.entries(filterParams)) {
+      const filterKey = filterKeyMap.get(filterParam.toLowerCase());
+      if (!filterKey) continue;
+
+      let productIds = new Set();
+
+      // Handle multiple values (comma-separated) for OR logic within same filter key
+      const filterValues = Array.isArray(filterValue)
+        ? filterValue
+        : filterValue
             .split(",")
             .map((v) => v.trim())
-            .filter((v) => v.length > 0);
+            .filter((v) => v);
 
-      if (values.length === 0) return true;
+      // Collect all product IDs that match ANY of the values (OR logic)
+      for (const singleValue of filterValues) {
+        if (filterParam === "discount" && singleValue !== "true") {
+          // Special handling for discount filter
+          const queryValue =
+            queryValueMap.get(singleValue.toLowerCase()) || singleValue;
 
-      // Find matching filter keys from FilterOption table
-      const queryKeyLower = String(queryKey).toLowerCase();
-      const matchingKeys = [];
+          if (queryValue.startsWith(">=")) {
+            const minDiscount = parseFloat(queryValue.substring(2));
+            const discountProducts = await prisma.product.findMany({
+              where: {
+                discount: { gte: minDiscount },
+                deleted_at: null,
+              },
+              select: { id: true },
+            });
+            discountProducts.forEach((p) => productIds.add(p.id.toString()));
+          }
+        } else if (filterParam === "rating") {
+          // Special handling for rating filter
+          const queryValue =
+            queryValueMap.get(singleValue.toLowerCase()) || singleValue;
 
-      // Check if queryKey matches any filter option key
-      filterKeyMap.forEach((data, filterKey) => {
-        if (
-          filterKey === queryKeyLower ||
-          data.keys.has(queryKeyLower) ||
-          Array.from(data.labels).some((label) => label === queryKeyLower)
-        ) {
-          matchingKeys.push(filterKey);
-          // Also add all variations
-          data.keys.forEach((k) => matchingKeys.push(k));
-          data.labels.forEach((l) => matchingKeys.push(l));
+          if (queryValue.startsWith(">=")) {
+            const minRating = parseFloat(queryValue.substring(2));
+            const ratingProducts = await prisma.product.findMany({
+              where: {
+                rating: { gte: minRating },
+                deleted_at: null,
+              },
+              select: { id: true },
+            });
+            ratingProducts.forEach((p) => productIds.add(p.id.toString()));
+          }
+        } else if (filterParam === "rating_range") {
+          // Special handling for rating range filter
+          const queryValue =
+            queryValueMap.get(singleValue.toLowerCase()) || singleValue;
+
+          if (queryValue.startsWith(">=")) {
+            const minRating = parseFloat(queryValue.substring(2));
+            const ratingProducts = await prisma.product.findMany({
+              where: {
+                rating: { gte: minRating },
+                deleted_at: null,
+              },
+              select: { id: true },
+            });
+            ratingProducts.forEach((p) => productIds.add(p.id.toString()));
+          }
+        } else if (filterParam === "price_range") {
+          // Special handling for price range filter
+          const queryValue =
+            queryValueMap.get(singleValue.toLowerCase()) || singleValue;
+
+          let priceWhere = {};
+
+          if (queryValue.startsWith("BETWEEN")) {
+            // Handle "BETWEEN 500 AND 1000" format
+            const match = queryValue.match(/BETWEEN\s+(\d+)\s+AND\s+(\d+)/i);
+            if (match) {
+              const minPrice = parseFloat(match[1]);
+              const maxPrice = parseFloat(match[2]);
+              priceWhere = {
+                price: { gte: minPrice, lte: maxPrice },
+              };
+            }
+          } else if (queryValue.startsWith("<")) {
+            // Handle "<200" format
+            const maxPrice = parseFloat(queryValue.substring(1));
+            priceWhere = {
+              price: { lt: maxPrice },
+            };
+          } else if (queryValue.startsWith(">")) {
+            // Handle ">2000" format
+            const minPrice = parseFloat(queryValue.substring(1));
+            priceWhere = {
+              price: { gt: minPrice },
+            };
+          }
+
+          if (Object.keys(priceWhere).length > 0) {
+            const priceProducts = await prisma.product.findMany({
+              where: {
+                ...priceWhere,
+                deleted_at: null,
+              },
+              select: { id: true },
+            });
+            priceProducts.forEach((p) => productIds.add(p.id.toString()));
+          }
+        } else {
+          // Use ProductFilterValue for other filters
+          const filterValues = await prisma.productFilterValue.findMany({
+            where: {
+              filter_key_id: filterKey.id,
+              OR: [
+                { raw_value: singleValue },
+                {
+                  option: {
+                    OR: [
+                      { value: singleValue },
+                      { display_value: singleValue },
+                    ],
+                  },
+                },
+              ],
+            },
+            select: { product_id: true },
+          });
+
+          filterValues.forEach((fv) =>
+            productIds.add(fv.product_id.toString())
+          );
         }
-      });
+      } // End of single value loop
 
-      // If no matching filter option found, try direct match with queryKey
-      if (matchingKeys.length === 0) {
-        matchingKeys.push(queryKeyLower);
+      // Intersect with previous results (AND logic)
+      if (isFirstFilter) {
+        filteredProductIds = productIds;
+        isFirstFilter = false;
+      } else {
+        filteredProductIds = new Set(
+          [...filteredProductIds].filter((id) => productIds.has(id))
+        );
       }
+    }
 
-      // Check in specs array
-      const specs = Array.isArray(product.specs) ? product.specs : [];
-      const specsMatch = specs.some((spec) => {
-        const label = String(spec.label || "").toLowerCase();
-        const value = String(spec.value || "").toLowerCase();
-        const key = String(spec.key || "").toLowerCase();
+    // Convert back to BigInt for database query
+    const productIdsArray = Array.from(filteredProductIds).map((id) =>
+      BigInt(id)
+    );
 
-        // Check if label/key matches any of the matching keys
-        const keyMatch =
-          matchingKeys.some((mk) => mk === label || mk === key) ||
-          label === queryKeyLower ||
-          key === queryKeyLower;
-
-        if (keyMatch) {
-          return values.some(
-            (fv) =>
-              value === String(fv).toLowerCase() ||
-              value.includes(String(fv).toLowerCase())
-          );
-        }
-        return false;
-      });
-
-      // Check in specs_detail array
-      const specsDetail = Array.isArray(product.specs_detail)
-        ? product.specs_detail
-        : [];
-      const specsDetailMatch = specsDetail.some((spec) => {
-        const label = String(spec.label || "").toLowerCase();
-        const value = String(spec.value || "").toLowerCase();
-        const key = String(spec.key || "").toLowerCase();
-
-        const keyMatch =
-          matchingKeys.some((mk) => mk === label || mk === key) ||
-          label === queryKeyLower ||
-          key === queryKeyLower;
-
-        if (keyMatch) {
-          return values.some(
-            (fv) =>
-              value === String(fv).toLowerCase() ||
-              value.includes(String(fv).toLowerCase())
-          );
-        }
-        return false;
-      });
-
-      return specsMatch || specsDetailMatch;
-    };
-
-    // Apply filters dynamically
-    let filteredProducts = allProducts;
-    Object.keys(filterParams).forEach((queryKey) => {
-      const filterValue = filterParams[queryKey];
-      filteredProducts = filteredProducts.filter((p) =>
-        matchesFilter(p, queryKey, filterValue)
+    // Filter products based on the filtered IDs
+    let finalProducts;
+    if (productIdsArray.length > 0) {
+      finalProducts = allProducts.filter((product) =>
+        productIdsArray.some((id) => id.toString() === product.id.toString())
       );
-    });
+    } else if (Object.keys(filterParams).length > 0) {
+      // No products match the filters
+      finalProducts = [];
+    } else {
+      // No filters applied
+      finalProducts = allProducts;
+    }
 
-    // Apply pagination after filtering
-    const total = filteredProducts.length;
-    const paginatedProducts = filteredProducts.slice(skip, skip + take);
-
-    // Calculate final_price and discount_percentage for each product
+    // Apply pagination to final results
+    const total = finalProducts.length;
+    const paginatedProducts = finalProducts.slice(skip, skip + take);
     const productsWithCalculations = paginatedProducts.map(
       calculateProductPrices
     );
@@ -498,6 +567,7 @@ export const updateProduct = async (req, res) => {
           specs_detail: parsedSpecsDetail ?? undefined,
           category_id: parseBigIntOrUndefined(data.category_id),
           sub_category_id: parseSubCategory(data.sub_category_id),
+          description: data.description ?? undefined,
         },
       });
 
@@ -609,7 +679,7 @@ export const searchProducts = async (req, res) => {
       pagination: {
         current_page: Number(page),
         per_page: Number(limit),
-        total_count,
+        total_count: total_count,
         total_pages: Math.max(1, Math.ceil(total_count / Number(limit))),
       },
     });
@@ -810,6 +880,153 @@ export const addRating = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to add rating",
+      error: error.message,
+    });
+  }
+};
+
+export const getSimilarProducts = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 6 } = req.query;
+
+    // Get the current product
+    const currentProduct = await prisma.product.findFirst({
+      where: { id: BigInt(id), deleted_at: null },
+      select: { id: true, description: true, category_id: true },
+    });
+
+    if (!currentProduct) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    if (
+      !currentProduct.description ||
+      currentProduct.description.trim() === ""
+    ) {
+      // If no description, fallback to category-based similarity
+      const similarProducts = await prisma.product.findMany({
+        where: {
+          category_id: currentProduct.category_id,
+          id: { not: BigInt(id) },
+          deleted_at: null,
+        },
+        include: { product_colors: true },
+        orderBy: { rating: "desc" },
+        take: Number(limit),
+      });
+
+      const productsWithCalculations = similarProducts.map(
+        calculateProductPrices
+      );
+      return res.json({
+        products: productsWithCalculations,
+        similarity_method: "category_based",
+      });
+    }
+
+    // Use pg_trgm for description similarity
+    // First, ensure pg_trgm extension is enabled (this should be done in migration)
+    try {
+      await prisma.$executeRaw`CREATE EXTENSION IF NOT EXISTS pg_trgm;`;
+    } catch (error) {
+      console.log(
+        "pg_trgm extension might already exist or permission denied:",
+        error.message
+      );
+    }
+
+    // Find similar products using trigram similarity
+    // similarity() function returns a value between 0 and 1, where 1 is identical
+    const similarProducts = await prisma.$queryRaw`
+      SELECT 
+        p.id,
+        p.name,
+        p.price,
+        p.discount,
+        p.quantity,
+        p.img,
+        p.specs,
+        p.specs_detail,
+        p.color,
+        p.category_id,
+        p.sub_category_id,
+        p.rating,
+        p.sold,
+        p.description,
+        p.created_at,
+        p.updated_at,
+        similarity(p.description, ${
+          currentProduct.description
+        }) as similarity_score
+      FROM products p
+      WHERE p.id != ${BigInt(id)}
+        AND p.deleted_at IS NULL
+        AND p.description IS NOT NULL
+        AND p.description != ''
+        AND similarity(p.description, ${currentProduct.description}) > 0.1
+      ORDER BY similarity_score DESC, p.rating DESC NULLS LAST
+      LIMIT ${Number(limit)};
+    `;
+
+    // If no similar products found by description, fallback to category
+    if (similarProducts.length === 0) {
+      const categoryProducts = await prisma.product.findMany({
+        where: {
+          category_id: currentProduct.category_id,
+          id: { not: BigInt(id) },
+          deleted_at: null,
+        },
+        include: { product_colors: true },
+        orderBy: { rating: "desc" },
+        take: Number(limit),
+      });
+
+      const productsWithCalculations = categoryProducts.map(
+        calculateProductPrices
+      );
+      return res.json({
+        products: productsWithCalculations,
+        similarity_method: "category_fallback",
+      });
+    }
+
+    // Get product colors for similar products
+    const productIds = similarProducts.map((p) => p.id);
+    const productColors = await prisma.productColor.findMany({
+      where: { product_id: { in: productIds } },
+    });
+
+    // Group colors by product_id
+    const colorsByProduct = productColors.reduce((acc, color) => {
+      const productId = color.product_id.toString();
+      if (!acc[productId]) acc[productId] = [];
+      acc[productId].push(color);
+      return acc;
+    }, {});
+
+    // Add product_colors to each product and calculate prices
+    const productsWithColors = similarProducts.map((product) => ({
+      ...product,
+      id: product.id.toString(), // Convert BigInt to string for JSON serialization
+      category_id: product.category_id.toString(),
+      sub_category_id: product.sub_category_id?.toString() || null,
+      product_colors: colorsByProduct[product.id.toString()] || [],
+    }));
+
+    const productsWithCalculations = productsWithColors.map(
+      calculateProductPrices
+    );
+
+    res.json({
+      products: productsWithCalculations,
+      similarity_method: "description_based",
+      similarity_threshold: 0.1,
+    });
+  } catch (error) {
+    console.error("Error in getSimilarProducts:", error);
+    res.status(500).json({
+      message: "Failed to get similar products",
       error: error.message,
     });
   }

@@ -8,7 +8,7 @@ export const listCustomers = async (req, res) => {
       where.OR = [
         { name: { contains: String(q), mode: "insensitive" } },
         { email: { contains: String(q), mode: "insensitive" } },
-        { phone: { contains: String(q), mode: "insensitive" } }
+        { phone: { contains: String(q), mode: "insensitive" } },
       ];
     }
 
@@ -27,24 +27,26 @@ export const listCustomers = async (req, res) => {
           role: true,
           phone: true,
           address: true,
-          created_at: true
+          created_at: true,
         },
         skip,
-        take
-      })
+        take,
+      }),
     ]);
 
     res.json({
       users,
       pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total,
-        pages: Math.max(1, Math.ceil(total / Number(limit)))
-      }
+        current_page: Number(page),
+        per_page: Number(limit),
+        total_count: total,
+        total_pages: Math.max(1, Math.ceil(total / Number(limit))),
+      },
     });
   } catch (error) {
-    res.status(500).json({ message: "Failed to list customers", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to list customers", error: error.message });
   }
 };
 
@@ -60,13 +62,15 @@ export const getCustomer = async (req, res) => {
         role: true,
         phone: true,
         address: true,
-        created_at: true
-      }
+        created_at: true,
+      },
     });
     if (!user) return res.status(404).json({ message: "Customer not found" });
     res.json(user);
   } catch (error) {
-    res.status(500).json({ message: "Failed to get customer", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to get customer", error: error.message });
   }
 };
 
@@ -80,7 +84,7 @@ export const updateCustomer = async (req, res) => {
         name: name ?? undefined,
         role: role ?? undefined,
         phone: phone ?? undefined,
-        address: address ?? undefined
+        address: address ?? undefined,
       },
       select: {
         id: true,
@@ -89,12 +93,14 @@ export const updateCustomer = async (req, res) => {
         role: true,
         phone: true,
         address: true,
-        created_at: true
-      }
+        created_at: true,
+      },
     });
     res.json({ message: "Customer updated successfully", user: updated });
   } catch (error) {
-    res.status(500).json({ message: "Failed to update customer", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to update customer", error: error.message });
   }
 };
 
@@ -107,8 +113,8 @@ export const deleteCustomer = async (req, res) => {
     });
     res.json({ message: "Customer deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete customer", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to delete customer", error: error.message });
   }
 };
-
-

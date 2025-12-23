@@ -14,7 +14,6 @@ import couponRoutes from "./routes/coupon.route.js";
 import reviewRoutes from "./routes/review.route.js";
 import orderRoutes from "./routes/order.route.js";
 import customerRoutes from "./routes/customer.route.js";
-// removed legacy product type routes
 import categoryRoutes from "./routes/category.route.js";
 import subCategoryRoutes from "./routes/subCategory.route.js";
 import wishlistRoutes from "./routes/wishlist.route.js";
@@ -77,7 +76,7 @@ io.use(async (socket, next) => {
   try {
     // Try to get token from auth object first, then from headers
     let token = socket.handshake.auth?.token;
-    
+
     if (!token) {
       const authHeader = socket.handshake.headers.authorization;
       if (authHeader) {
@@ -87,11 +86,13 @@ io.use(async (socket, next) => {
 
     // Also try to get from cookies
     if (!token && socket.handshake.headers.cookie) {
-      const cookies = socket.handshake.headers.cookie.split(';').reduce((acc, cookie) => {
-        const [key, value] = cookie.trim().split('=');
-        acc[key] = value;
-        return acc;
-      }, {});
+      const cookies = socket.handshake.headers.cookie
+        .split(";")
+        .reduce((acc, cookie) => {
+          const [key, value] = cookie.trim().split("=");
+          acc[key] = value;
+          return acc;
+        }, {});
       token = cookies.accessToken;
     }
 
@@ -100,9 +101,11 @@ io.use(async (socket, next) => {
     }
 
     const jwt = (await import("jsonwebtoken")).default;
-    const secret = process.env.ACCESS_TOKEN_SECRET || "your-access-token-secret-key-change-in-production";
+    const secret =
+      process.env.ACCESS_TOKEN_SECRET ||
+      "your-access-token-secret-key-change-in-production";
     const decoded = jwt.verify(token, secret);
-    
+
     const userId = decoded.userId?.toString() || decoded.id?.toString();
     if (!userId) {
       return next(new Error("Authentication error: Invalid token payload"));
@@ -117,7 +120,7 @@ io.use(async (socket, next) => {
     if (!user) {
       return next(new Error("Authentication error: User not found"));
     }
-    
+
     socket.userId = userId;
     socket.userRole = user.role || "user";
     next();
@@ -142,7 +145,7 @@ io.on("connection", (socket) => {
   socket.on("send_message", async (data) => {
     try {
       const { chatId, content } = data;
-      
+
       // Create message in database
       const message = await prisma.message.create({
         data: {
@@ -184,7 +187,7 @@ io.on("connection", (socket) => {
           message,
           chat: message.chat,
         });
-        
+
         // Also emit a notification event for admin dashboard
         io.to("admin_room").emit("chat_notification", {
           chatId,

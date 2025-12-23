@@ -11,6 +11,7 @@ import {
   deleteProductImage,
   addSales,
   addRating,
+  getSimilarProducts,
 } from "../controllers/product.controller.js";
 import { protectRoute, adminRoute } from "../middleware/auth.middleware.js";
 import { upload } from "../middleware/upload.middleware.js";
@@ -21,6 +22,7 @@ const router = express.Router();
 router.get("/", getAllProducts);
 router.get("/search", searchProducts);
 router.get("/category/:categoryId", getProductsByCategory);
+router.get("/:id/similar", getSimilarProducts);
 router.get("/:id", getProductById);
 
 // Protected routes - require authentication

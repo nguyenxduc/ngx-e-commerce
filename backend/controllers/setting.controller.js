@@ -106,7 +106,8 @@ export const getSettingByKey = async (req, res) => {
 // Create or update setting (admin only)
 export const upsertSetting = async (req, res) => {
   try {
-    const { key, value, description, category, data_type, is_public } = req.body;
+    const { key, value, description, category, data_type, is_public } =
+      req.body;
 
     if (!key || value === undefined) {
       return res.status(400).json({
@@ -119,7 +120,9 @@ export const upsertSetting = async (req, res) => {
     const type = data_type || "string";
     if (!validDataTypes.includes(type)) {
       return res.status(400).json({
-        message: `Invalid data_type. Must be one of: ${validDataTypes.join(", ")}`,
+        message: `Invalid data_type. Must be one of: ${validDataTypes.join(
+          ", "
+        )}`,
       });
     }
 
@@ -190,7 +193,8 @@ export const updateSetting = async (req, res) => {
       where: { id: existing.id },
       data: {
         value: stringValue,
-        description: description !== undefined ? description : existing.description,
+        description:
+          description !== undefined ? description : existing.description,
         category: category || existing.category,
         data_type: data_type || existing.data_type,
         is_public: is_public !== undefined ? is_public : existing.is_public,
@@ -236,4 +240,3 @@ export const deleteSetting = async (req, res) => {
     });
   }
 };
-

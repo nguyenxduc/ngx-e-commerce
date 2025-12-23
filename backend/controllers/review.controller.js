@@ -14,7 +14,9 @@ export const createReview = async (req, res) => {
         .json({ message: "You have already reviewed this product" });
     }
 
-    const product = await prisma.product.findUnique({ where: { id: BigInt(productId) } });
+    const product = await prisma.product.findUnique({
+      where: { id: BigInt(productId) },
+    });
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
@@ -71,12 +73,20 @@ export const getReviewsByProduct = async (req, res) => {
         skip,
         take,
       }),
-      prisma.review.aggregate({ where: { product_id: pid }, _avg: { rating: true } }),
+      prisma.review.aggregate({
+        where: { product_id: pid },
+        _avg: { rating: true },
+      }),
     ]);
 
     res.json({
       reviews,
-      pagination: { page: Number(page), limit: Number(limit), total, pages: Math.ceil(total / Number(limit)) },
+      pagination: {
+        current_page: Number(page),
+        per_page: Number(limit),
+        total_count: total,
+        total_pages: Math.ceil(total / Number(limit)),
+      },
       summary: { average_rating: agg._avg.rating || 0, total_reviews: total },
     });
   } catch (error) {
@@ -109,7 +119,9 @@ export const updateReview = async (req, res) => {
     const { rating, comment } = req.body;
     const userId = req.user.id;
 
-    const review = await prisma.review.findUnique({ where: { id: BigInt(req.params.id) } });
+    const review = await prisma.review.findUnique({
+      where: { id: BigInt(req.params.id) },
+    });
     if (!review) {
       return res.status(404).json({ message: "Review not found" });
     }
@@ -155,7 +167,9 @@ export const deleteReview = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    const review = await prisma.review.findUnique({ where: { id: BigInt(req.params.id) } });
+    const review = await prisma.review.findUnique({
+      where: { id: BigInt(req.params.id) },
+    });
     if (!review) {
       return res.status(404).json({ message: "Review not found" });
     }
@@ -247,8 +261,12 @@ export const getProductReviewStats = async (req, res) => {
 
     // rating distribution (1-5)
     const distribution = {};
-    const all = await prisma.review.findMany({ where: { product_id: pid }, select: { rating: true } });
-    for (const r of all) distribution[r.rating] = (distribution[r.rating] || 0) + 1;
+    const all = await prisma.review.findMany({
+      where: { product_id: pid },
+      select: { rating: true },
+    });
+    for (const r of all)
+      distribution[r.rating] = (distribution[r.rating] || 0) + 1;
     const ratingDistribution = Object.keys(distribution)
       .map((k) => ({ rating: Number(k), count: distribution[k] }))
       .sort((a, b) => b.rating - a.rating);

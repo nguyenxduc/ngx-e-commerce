@@ -25,6 +25,7 @@ model SchemaMigration {
 model Category {
   id          BigInt    @id @default(autoincrement())
   name        String?
+  slug        String?   @unique
   image_url   String?
   description String?
   created_at  DateTime  @default(now())
@@ -74,7 +75,7 @@ model Product {
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
   deleted_at      DateTime?
-
+  description     String?
   // relations
   category     Category     @relation(fields: [category_id], references: [id])
   sub_category SubCategory? @relation(fields: [sub_category_id], references: [id])
@@ -83,6 +84,7 @@ model Product {
   cart_items   CartItem[]
   wishlists    Wishlist[]
   embedding    ProductEmbedding? @relation("ProductEmbedding")
+  filter_values ProductFilterValue[]
 
   @@index([name])
   @@index([category_id])
@@ -289,22 +291,46 @@ model Coupon {
   @@map("coupons")
 }
 
-model FilterOption {
+model FilterKey {
   id          BigInt    @id @default(autoincrement())
-  key         String // 'brand', 'ram', 'screen_size', etc.
+  key         String    @unique // 'brand', 'ram', 'screen_size', etc.
   label       String // Display name: 'Brand', 'RAM', etc.
-  value       String // Actual value: 'Apple', '8GB', etc.
-  category_id BigInt? // Optional: filter by category
-  order       Int       @default(0) // Display order
+  description String? // Optional description
+  data_type   String    @default("string") // string, number, boolean, range
   is_active   Boolean   @default(true)
+  order       Int       @default(0) // Display order
   created_at  DateTime  @default(now())
   updated_at  DateTime  @updatedAt
   deleted_at  DateTime?
 
-  category Category? @relation(fields: [category_id], references: [id])
+  // relations
+  filter_options FilterOption[]
+  product_filter_values ProductFilterValue[]
 
-  @@unique([key, value, category_id])
-  @@index([key, category_id])
+  @@index([key])
+  @@map("filter_keys")
+}
+
+model FilterOption {
+  id            BigInt    @id @default(autoincrement())
+  filter_key_id BigInt // Reference to FilterKey
+  value         String // Legacy field for backward compatibility
+  display_value String? // Value shown to user: '30% or more', 'On Sale'
+  query_value   String? // Value used for querying: '>=30', 'discount>0'
+  category_id   BigInt? // Optional: filter by category
+  order         Int       @default(0) // Display order
+  is_active     Boolean   @default(true)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+
+  // relations
+  filter_key FilterKey  @relation(fields: [filter_key_id], references: [id])
+  category   Category? @relation(fields: [category_id], references: [id])
+  product_filter_values ProductFilterValue[]
+
+  @@unique([filter_key_id, value, category_id])
+  @@index([filter_key_id, category_id])
   @@map("filter_options")
 }
 
@@ -417,9 +443,27 @@ model AiMessage {
   metadata   Json?    @default("{}")
   created_at DateTime @default(now())
 
-  ai_chat AiChat @relation(fields: [ai_chat_id], references: [id])
+  ai_chat AiChat @relation(fields: [ai_chat_id], references: [id], onDelete: Cascade)
 
   @@index([ai_chat_id])
   @@index([created_at])
   @@map("ai_messages")
+}
+
+model ProductFilterValue {
+  id          BigInt  @id @default(autoincrement())
+  product_id  BigInt
+  filter_key_id BigInt
+  option_id   BigInt?
+
+  raw_value   String?  
+  created_at  DateTime @default(now())
+
+  product     Product     @relation(fields: [product_id], references: [id])
+  filter_key  FilterKey   @relation(fields: [filter_key_id], references: [id])
+  option      FilterOption? @relation(fields: [option_id], references: [id])
+
+  @@index([product_id])
+  @@index([filter_key_id])
+  @@unique([product_id, filter_key_id])
 }
