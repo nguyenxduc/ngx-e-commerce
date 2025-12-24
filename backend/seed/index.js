@@ -126,49 +126,49 @@ async function seedCategories() {
     {
       name: "Smartphones",
       slug: "smartphones",
-      image_url: "https://picsum.photos/seed/phones/600/400",
+      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/iphone_air-3_2.jpg",
       description: "Latest smartphones and mobile devices",
     },
     {
       name: "Laptops",
       slug: "laptops",
-      image_url: "https://picsum.photos/seed/laptops/600/400",
+      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/macbook_13.png",
       description: "Laptops and ultrabooks for work and gaming",
     },
     {
       name: "Tablets",
       slug: "tablets",
-      image_url: "https://picsum.photos/seed/tablets/600/400",
+      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/ipad-pro-m5.jpg",
       description: "Tablets and iPads for productivity",
     },
     {
       name: "Headphones",
       slug: "headphones",
-      image_url: "https://picsum.photos/seed/headphones/600/400",
+      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/g/r/group_111_1_1.png",
       description: "Wireless and wired headphones",
     },
     {
       name: "Smartwatches",
       slug: "smartwatches",
-      image_url: "https://picsum.photos/seed/watches/600/400",
+      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple_lte_3_21.png",
       description: "Smartwatches and fitness trackers",
     },
     {
       name: "Cameras",
       slug: "cameras",
-      image_url: "https://picsum.photos/seed/cameras/600/400",
+      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/c/a/camera-imou-ipc-a32e-khong-day-3mp_2.png",
       description: "Digital cameras and accessories",
     },
     {
       name: "Gaming",
       slug: "gaming",
-      image_url: "https://picsum.photos/seed/gaming/600/400",
+      image_url: "https://product.hstatic.net/200000722513/product/may-choi-game-msi-claw-a1m-049vn_9e71b95c111446598e8ff8090302a175_39f190f469d248d585024b6203d40112_grande.png",
       description: "Gaming consoles and accessories",
     },
     {
       name: "Accessories",
       slug: "accessories",
-      image_url: "https://picsum.photos/seed/accessories/600/400",
+      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/d/a/dan-cuong-luc-iphone-15-jcpal-8_1.png",
       description: "Phone cases, chargers, and more",
     },
   ];
@@ -588,9 +588,8 @@ async function seedProducts(categories, subCategories) {
       sold: 15,
       rating: 4.8,
       img: [
-        "https://picsum.photos/seed/galaxy1/800/600",
-        "https://picsum.photos/seed/galaxy2/800/600",
-        "https://picsum.photos/seed/galaxy3/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/s/a/samsung-galaxy-s24-ultra_1_.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/s/s/ss-s24-ultra-den-600.png",
       ],
       specs: [
         { label: "Brand", value: "Samsung" },
@@ -649,8 +648,8 @@ async function seedProducts(categories, subCategories) {
       sold: 12,
       rating: 4.9,
       img: [
-        "https://picsum.photos/seed/iphone1/800/600",
-        "https://picsum.photos/seed/iphone2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/iphone-15-plus_1__1.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/v/n/vn1b93_1_2.jpg"
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -708,8 +707,8 @@ async function seedProducts(categories, subCategories) {
       sold: 8,
       rating: 4.7,
       img: [
-        "https://picsum.photos/seed/macbook1/800/600",
-        "https://picsum.photos/seed/macbook2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_2__11.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_3__9.png"
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -736,8 +735,8 @@ async function seedProducts(categories, subCategories) {
       sold: 5,
       rating: 4.6,
       img: [
-        "https://picsum.photos/seed/rog1/800/600",
-        "https://picsum.photos/seed/rog2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_2__10_36.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_4__8_29.png"
       ],
       specs: [
         { label: "Brand", value: "ASUS" },
@@ -763,8 +762,8 @@ async function seedProducts(categories, subCategories) {
       sold: 10,
       rating: 4.8,
       img: [
-        "https://picsum.photos/seed/ipad1/800/600",
-        "https://picsum.photos/seed/ipad2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/ipad_pro_12.9_2020_wifi_256gb__2.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-ipad-pro-12-9-2020-wifi-128-gb-6.jpg"
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -793,8 +792,8 @@ async function seedProducts(categories, subCategories) {
       sold: 7,
       rating: 4.5,
       img: [
-        "https://picsum.photos/seed/tab1/800/600",
-        "https://picsum.photos/seed/tab2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/s/a/samsung-galaxy-tab-s9-xam-12_1.jpg",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/s/a/samsung-galaxy-tab-s9-fe-mint-13_1.jpg",
       ],
       specs: [
         { label: "Brand", value: "Samsung" },
@@ -822,8 +821,8 @@ async function seedProducts(categories, subCategories) {
       sold: 20,
       rating: 4.9,
       img: [
-        "https://picsum.photos/seed/sony1/800/600",
-        "https://picsum.photos/seed/sony2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tai-nghe-chup-tai-sony-wh-1000xm5-2.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tai-nghe-chup-tai-sony-wh-1000xm5-2-removebg-preview.png"
       ],
       specs: [
         { label: "Brand", value: "Sony" },
@@ -850,8 +849,8 @@ async function seedProducts(categories, subCategories) {
       sold: 30,
       rating: 4.8,
       img: [
-        "https://picsum.photos/seed/airpods1/800/600",
-        "https://picsum.photos/seed/airpods2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/1/_/1_264.jpg",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/4/_/4_197.jpg"
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -875,8 +874,8 @@ async function seedProducts(categories, subCategories) {
       sold: 15,
       rating: 4.7,
       img: [
-        "https://picsum.photos/seed/watch1/800/600",
-        "https://picsum.photos/seed/watch2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-watch-series-9-45mm-_10_.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-watch-series-9-45mm-.png"
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -903,8 +902,8 @@ async function seedProducts(categories, subCategories) {
       sold: 3,
       rating: 4.9,
       img: [
-        "https://picsum.photos/seed/canon1/800/600",
-        "https://picsum.photos/seed/canon2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-anh-canon-eos-r50_4_.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-anh-canon-eos-r50_1_.png"
       ],
       specs: [
         { label: "Brand", value: "Canon" },
@@ -927,8 +926,8 @@ async function seedProducts(categories, subCategories) {
       sold: 50,
       rating: 4.8,
       img: [
-        "https://picsum.photos/seed/ps5-1/800/600",
-        "https://picsum.photos/seed/ps5-2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-choi-game-sony-playstation-5-slim-1.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-choi-game-sony-playstation-5-slim-3.png"
       ],
       specs: [
         { label: "Brand", value: "Sony" },
@@ -951,8 +950,8 @@ async function seedProducts(categories, subCategories) {
       sold: 45,
       rating: 4.7,
       img: [
-        "https://picsum.photos/seed/xbox1/800/600",
-        "https://picsum.photos/seed/xbox2/800/600",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tay-cam-choi-game-microsoft-xbox-series-x-controller-1.png",
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tay-cam-choi-game-1_1.png"
       ],
       specs: [
         { label: "Brand", value: "Microsoft" },
