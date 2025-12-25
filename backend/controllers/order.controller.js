@@ -9,10 +9,9 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ message: "No order items provided" });
     }
 
-    // validate products and compute totals (with color stock)
     let totalAmount = 0;
     const orderItemsData = [];
-    const orderItemColors = []; // keep parsed color objects for stock decrement
+    const orderItemColors = [];
     for (const it of items) {
       const product = await prisma.product.findFirst({
         where: { id: BigInt(it.product_id), deleted_at: null },

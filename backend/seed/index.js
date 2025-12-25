@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/db.js";
 
 async function clearDatabase() {
-  // Xóa theo thứ tự để tránh vi phạm ràng buộc khóa ngoại
   await prisma.aiMessage.deleteMany();
   await prisma.aiChat.deleteMany();
   await prisma.message.deleteMany();
@@ -26,14 +25,6 @@ async function clearDatabase() {
   await prisma.coupon.deleteMany();
   await prisma.user.deleteMany();
   await prisma.setting.deleteMany();
-
-  // Xóa các bảng Rails legacy nếu cần
-  try {
-    await prisma.arInternalMetadata.deleteMany();
-    await prisma.schemaMigration.deleteMany();
-  } catch (error) {
-    // Bỏ qua nếu bảng không tồn tại
-  }
 }
 
 async function seedUsers() {
