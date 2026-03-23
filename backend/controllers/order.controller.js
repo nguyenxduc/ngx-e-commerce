@@ -1,4 +1,6 @@
 import { prisma } from "../lib/db.js";
+import { earnPointsForOrder } from "./loyalty.controller.js";
+import { writeAuditLog } from "./audit.controller.js";
 
 export const createOrder = async (req, res) => {
   try {
@@ -172,7 +174,34 @@ export const createOrder = async (req, res) => {
         });
       }
 
+      // Cộng điểm tạm thời khi tạo đơn (có thể sửa thành chỉ cộng khi delivered nếu muốn)
+      await earnPointsForOrder(
+        tx,
+        BigInt(userId),
+        createdOrder.id,
+        createdOrder.total_amount
+      );
+
+      // Cộng điểm tạm thời khi tạo đơn
+      await earnPointsForOrder(
+        tx,
+        BigInt(userId),
+        createdOrder.id,
+        createdOrder.total_amount
+      );
+
       return createdOrder;
+    });
+
+    // Audit log tạo đơn + có thể dùng cho phân loại khách hàng
+    writeAuditLog({
+      userId,
+      action: "ORDER_CREATE",
+      resource: "order",
+      resourceId: created.id,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+      metadata: { totalAmount, finalAmount },
     });
 
     res.status(201).json({
@@ -352,6 +381,16 @@ export const updateOrderStatus = async (req, res) => {
       where: { id: BigInt(id) },
       data: { status },
       include: { user: { select: { id: true, name: true, email: true } } },
+    });
+
+    writeAuditLog({
+      userId: req.user.id,
+      action: "ORDER_STATUS_UPDATE",
+      resource: "order",
+      resourceId: id,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+      metadata: { status },
     });
 
     res.json({

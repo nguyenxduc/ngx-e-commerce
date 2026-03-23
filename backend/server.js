@@ -23,6 +23,10 @@ import settingRoutes from "./routes/setting.route.js";
 import chatRoutes from "./routes/chat.route.js";
 import dashboardRoutes from "./routes/dashboard.route.js";
 import aiAssistantRoutes from "./routes/aiAssistant.route.js";
+import recommendationRoutes from "./routes/recommendation.route.js";
+import loyaltyRoutes from "./routes/loyalty.route.js";
+import notificationRoutes from "./routes/notification.route.js";
+import auditRoutes from "./routes/audit.route.js";
 
 import cors from "cors";
 
@@ -61,6 +65,10 @@ app.use("/api/settings", settingRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/ai-assistant", aiAssistantRoutes);
+app.use("/api/recommendations", recommendationRoutes);
+app.use("/api/loyalty", loyaltyRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/audit-logs", auditRoutes);
 
 // Setup Socket.io
 const io = new Server(server, {

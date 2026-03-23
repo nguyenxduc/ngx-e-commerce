@@ -1,5 +1,6 @@
 import { prisma } from "../lib/db.js";
 import cloudinary from "../lib/cloudinary.js";
+import { log } from "console";
 
 // Helper function to calculate final_price and discount_percentage
 const calculateProductPrices = (product) => {
@@ -42,14 +43,24 @@ export const createProduct = async (req, res) => {
       discount = 0,
       quantity = 0,
       img = [],
-      specs = [],
-      specs_detail = [],
-      color = [], // legacy array
-      product_colors = [], // [{name, code, quantity}]
+      specs,
+      specs_detail,
+      color, // legacy
+      product_colors = [],
       category_id,
       sub_category_id,
       description = "",
     } = req.body;
+
+    const parseJsonArray = (value) => {
+      if (!value) return [];
+      if (Array.isArray(value) || typeof value === "object") return value;
+      try {
+        return JSON.parse(value);
+      } catch {
+        return [];
+      }
+    };
 
     const parseBigIntOrUndefined = (v) => {
       if (v === undefined || v === null || v === "") return undefined;
@@ -66,6 +77,11 @@ export const createProduct = async (req, res) => {
       return BigInt(num);
     };
 
+    // ✅ đảm bảo JSON đúng kiểu
+    const specsJson = parseJsonArray(specs);
+    const specsDetailJson = parseJsonArray(specs_detail);
+    const colorJson = parseJsonArray(color);
+
     let imageUrls = Array.isArray(img) ? img : [];
     if (Array.isArray(req.files) && req.files.length > 0) {
       const uploads = await Promise.all(
@@ -76,33 +92,29 @@ export const createProduct = async (req, res) => {
       imageUrls = uploads.map((u) => u.secure_url);
     }
 
-    // Normalize color inputs
     const colorsInput =
       Array.isArray(product_colors) && product_colors.length
         ? product_colors
-        : Array.isArray(color)
-        ? color
-        : [];
+        : colorJson;
 
-    // Create product and related colors in a transaction
     const result = await prisma.$transaction(async (tx) => {
       const savedProduct = await tx.product.create({
         data: {
           name,
           price: Number(price),
           discount: Number(discount),
-          quantity: Number(quantity), // will adjust after color insert
+          quantity: Number(quantity),
           img: imageUrls,
-          specs,
-          specs_detail,
-          color, // keep legacy
+          specs: specsJson, // ✅ JSON
+          specs_detail: specsDetailJson, // ✅ JSON
+          color: colorJson, // ✅ JSON
           category_id: parseBigIntOrUndefined(category_id),
           sub_category_id: parseSubCategory(sub_category_id),
           description: String(description),
         },
       });
 
-      if (colorsInput.length > 0) {
+      if (Array.isArray(colorsInput) && colorsInput.length > 0) {
         await tx.productColor.createMany({
           data: colorsInput.map((c) => ({
             product_id: savedProduct.id,
@@ -111,28 +123,32 @@ export const createProduct = async (req, res) => {
             quantity: Number(c.quantity || 0),
           })),
         });
-        // update total quantity = sum of colors
+
         const sumQty = colorsInput.reduce(
           (sum, c) => sum + Number(c.quantity || 0),
           0
         );
+
         await tx.product.update({
           where: { id: savedProduct.id },
           data: { quantity: sumQty },
         });
+
         savedProduct.quantity = sumQty;
       }
 
       return savedProduct;
     });
 
-    res
-      .status(201)
-      .json({ message: "Product created successfully", product: result });
+    res.status(201).json({
+      message: "Product created successfully",
+      product: result,
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to create product", error: error.message });
+    res.status(500).json({
+      message: "Failed to create product",
+      error: error.message,
+    });
   }
 };
 
@@ -284,6 +300,7 @@ export const getAllProducts = async (req, res) => {
             .filter((v) => v);
 
       // Collect all product IDs that match ANY of the values (OR logic)
+
       for (const singleValue of filterValues) {
         if (filterParam === "discount" && singleValue !== "true") {
           // Special handling for discount filter

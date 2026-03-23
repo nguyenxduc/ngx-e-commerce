@@ -147,6 +147,9 @@ model User {
   phone           String?
   address         String?
   avatar          String?
+  // Loyalty & segmentation
+  loyalty_points  Int       @default(0)
+  segment         String?   // e.g. BRONZE, SILVER, GOLD, PLATINUM
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
   deleted_at      DateTime?
@@ -162,6 +165,20 @@ model User {
   ai_chats  AiChat[]
 
   @@map("users")
+}
+
+model LoyaltyPointTransaction {
+  id          BigInt   @id @default(autoincrement())
+  user_id     BigInt
+  order_id    BigInt?  // nếu điểm đến từ đơn hàng
+  points      Int      // dương = cộng điểm, âm = trừ điểm
+  type        String   // EARN | REDEEM | ADJUST
+  description String?
+  created_at  DateTime @default(now())
+
+  @@index([user_id, created_at])
+  @@index([order_id])
+  @@map("loyalty_point_transactions")
 }
 
 model Cart {
@@ -217,6 +234,39 @@ model Order {
   payments    Payment[]
 
   @@map("orders")
+}
+
+// Thông báo hệ thống gửi cho người dùng
+model Notification {
+  id          BigInt   @id @default(autoincrement())
+  user_id     BigInt?  // null = broadcast
+  title       String
+  message     String
+  type        String?  // ORDER, PROMO, SYSTEM...
+  is_read     Boolean  @default(false)
+  created_at  DateTime @default(now())
+  read_at     DateTime?
+
+  @@index([user_id, created_at])
+  @@index([is_read, created_at])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  user_id    BigInt?
+  action     String   // ví dụ: LOGIN, ORDER_STATUS_UPDATE, PRODUCT_CREATE...
+  resource   String?  // e.g. "order", "product", "user"
+  resource_id BigInt?
+  ip         String?
+  user_agent String?
+  metadata   Json?    @default("{}")
+  created_at DateTime @default(now())
+
+  @@index([user_id, created_at])
+  @@index([resource, resource_id])
+  @@index([action, created_at])
+  @@map("audit_logs")
 }
 
 model OrderItem {
@@ -448,6 +498,66 @@ model AiMessage {
   @@index([ai_chat_id])
   @@index([created_at])
   @@map("ai_messages")
+}
+
+model AiFeedback {
+  id            BigInt   @id @default(autoincrement())
+  ai_message_id BigInt
+  user_id       BigInt
+  rating        Int      // 1-5
+  comment       String?
+  created_at    DateTime @default(now())
+
+  @@index([ai_message_id])
+  @@index([user_id])
+  @@map("ai_feedback")
+}
+
+// Lightweight event log for recommendation & analytics.
+// Lưu ý: bảng này sẽ rất lớn theo thời gian, nên dùng cho dữ liệu gần đây
+// và có thể archive/aggregate định kỳ sang kho khác.
+model UserBehavior {
+  id         BigInt   @id @default(autoincrement())
+  user_id    BigInt?
+  session_id String?  // cho user chưa đăng nhập
+  product_id BigInt?
+  event_type String   // view | click | add_to_cart | purchase ...
+  event_time DateTime @default(now())
+  metadata   Json?    @default("{}")
+
+  @@index([user_id, event_time])
+  @@index([product_id, event_time])
+  @@index([event_type, event_time])
+  @@map("user_behavior")
+}
+
+// Bảng lưu điểm tương đồng giữa các sản phẩm, được tính offline.
+// Không bắt buộc quan hệ Prisma để giữ schema đơn giản, dùng id thuần tuý.
+model ProductSimilarity {
+  id                 BigInt   @id @default(autoincrement())
+  product_id         BigInt
+  similar_product_id BigInt
+  score              Float
+  updated_at         DateTime @default(now())
+
+  @@unique([product_id, similar_product_id])
+  @@index([product_id])
+  @@map("product_similarity")
+}
+
+// Log kết quả gợi ý đã được precompute để API trả nhanh.
+model RecommendationLog {
+  id         BigInt   @id @default(autoincrement())
+  user_id    BigInt?
+  session_id String?
+  strategy   String   // e.g. "personalized_cf", "cold_start_best_seller"
+  product_ids BigInt[]
+  created_at DateTime @default(now())
+
+  @@index([user_id, created_at])
+  @@index([session_id, created_at])
+  @@index([strategy, created_at])
+  @@map("recommendation_log")
 }
 
 model ProductFilterValue {

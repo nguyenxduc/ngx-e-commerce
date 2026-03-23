@@ -117,49 +117,57 @@ async function seedCategories() {
     {
       name: "Smartphones",
       slug: "smartphones",
-      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/iphone_air-3_2.jpg",
+      image_url:
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/iphone_air-3_2.jpg",
       description: "Latest smartphones and mobile devices",
     },
     {
       name: "Laptops",
       slug: "laptops",
-      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/macbook_13.png",
+      image_url:
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/macbook_13.png",
       description: "Laptops and ultrabooks for work and gaming",
     },
     {
       name: "Tablets",
       slug: "tablets",
-      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/ipad-pro-m5.jpg",
+      image_url:
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/ipad-pro-m5.jpg",
       description: "Tablets and iPads for productivity",
     },
     {
       name: "Headphones",
       slug: "headphones",
-      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/g/r/group_111_1_1.png",
+      image_url:
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/g/r/group_111_1_1.png",
       description: "Wireless and wired headphones",
     },
     {
       name: "Smartwatches",
       slug: "smartwatches",
-      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple_lte_3_21.png",
+      image_url:
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:300:300/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple_lte_3_21.png",
       description: "Smartwatches and fitness trackers",
     },
     {
       name: "Cameras",
       slug: "cameras",
-      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/c/a/camera-imou-ipc-a32e-khong-day-3mp_2.png",
+      image_url:
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/c/a/camera-imou-ipc-a32e-khong-day-3mp_2.png",
       description: "Digital cameras and accessories",
     },
     {
       name: "Gaming",
       slug: "gaming",
-      image_url: "https://product.hstatic.net/200000722513/product/may-choi-game-msi-claw-a1m-049vn_9e71b95c111446598e8ff8090302a175_39f190f469d248d585024b6203d40112_grande.png",
+      image_url:
+        "https://product.hstatic.net/200000722513/product/may-choi-game-msi-claw-a1m-049vn_9e71b95c111446598e8ff8090302a175_39f190f469d248d585024b6203d40112_grande.png",
       description: "Gaming consoles and accessories",
     },
     {
       name: "Accessories",
       slug: "accessories",
-      image_url: "https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/d/a/dan-cuong-luc-iphone-15-jcpal-8_1.png",
+      image_url:
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:358:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/d/a/dan-cuong-luc-iphone-15-jcpal-8_1.png",
       description: "Phone cases, chargers, and more",
     },
   ];
@@ -640,7 +648,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.9,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/iphone-15-plus_1__1.png",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/v/n/vn1b93_1_2.jpg"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/v/n/vn1b93_1_2.jpg",
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -699,7 +707,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.7,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_2__11.png",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_3__9.png"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_3__9.png",
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -727,7 +735,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.6,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_2__10_36.png",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_4__8_29.png"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/e/text_ng_n_4__8_29.png",
       ],
       specs: [
         { label: "Brand", value: "ASUS" },
@@ -754,7 +762,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.8,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/i/p/ipad_pro_12.9_2020_wifi_256gb__2.png",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-ipad-pro-12-9-2020-wifi-128-gb-6.jpg"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-ipad-pro-12-9-2020-wifi-128-gb-6.jpg",
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -813,7 +821,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.9,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tai-nghe-chup-tai-sony-wh-1000xm5-2.png",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tai-nghe-chup-tai-sony-wh-1000xm5-2-removebg-preview.png"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tai-nghe-chup-tai-sony-wh-1000xm5-2-removebg-preview.png",
       ],
       specs: [
         { label: "Brand", value: "Sony" },
@@ -841,7 +849,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.8,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/1/_/1_264.jpg",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/4/_/4_197.jpg"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/4/_/4_197.jpg",
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -866,7 +874,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.7,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-watch-series-9-45mm-_10_.png",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-watch-series-9-45mm-.png"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/a/p/apple-watch-series-9-45mm-.png",
       ],
       specs: [
         { label: "Brand", value: "Apple" },
@@ -894,7 +902,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.9,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-anh-canon-eos-r50_4_.png",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-anh-canon-eos-r50_1_.png"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-anh-canon-eos-r50_1_.png",
       ],
       specs: [
         { label: "Brand", value: "Canon" },
@@ -918,7 +926,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.8,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-choi-game-sony-playstation-5-slim-1.png",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-choi-game-sony-playstation-5-slim-3.png"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/m/a/may-choi-game-sony-playstation-5-slim-3.png",
       ],
       specs: [
         { label: "Brand", value: "Sony" },
@@ -942,7 +950,7 @@ async function seedProducts(categories, subCategories) {
       rating: 4.7,
       img: [
         "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tay-cam-choi-game-microsoft-xbox-series-x-controller-1.png",
-        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tay-cam-choi-game-1_1.png"
+        "https://cdn2.cellphones.com.vn/insecure/rs:fill:0:358/q:90/plain/https://cellphones.com.vn/media/catalog/product/t/a/tay-cam-choi-game-1_1.png",
       ],
       specs: [
         { label: "Brand", value: "Microsoft" },

@@ -31,6 +31,9 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
 });
 
 const topK = Number(process.env.AI_RETRIEVE_K || 5);
+// Số lượng message gần nhất dùng làm ngữ cảnh hội thoại để tránh gửi quá dài
+// giúp giảm latency nhưng vẫn đảm bảo AI hiểu câu như "Cái này giá bao nhiêu?".
+const MAX_HISTORY = Number(process.env.AI_MAX_HISTORY || 6);
 
 const retrieveContext = async (prisma, question) => {
   try {
@@ -59,10 +62,16 @@ export const runAgent = async (prisma, chatId) => {
     apiKey: process.env.GEMINI_API_KEY,
   });
 
-  const history = await prisma.aiMessage.findMany({
+  const fullHistory = await prisma.aiMessage.findMany({
     where: { ai_chat_id: BigInt(chatId) },
     orderBy: { created_at: "asc" },
   });
+
+  // Chỉ giữ lại một số message gần nhất để làm context (giảm token + độ trễ)
+  const history =
+    fullHistory.length > MAX_HISTORY
+      ? fullHistory.slice(fullHistory.length - MAX_HISTORY)
+      : fullHistory;
 
   const lastUser = history.length ? history[history.length - 1].content : "";
   const retrieved = lastUser ? await retrieveContext(prisma, lastUser) : [];

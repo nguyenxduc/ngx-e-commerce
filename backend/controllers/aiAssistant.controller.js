@@ -1,8 +1,6 @@
 import { randomUUID } from "crypto";
 import { prisma } from "../lib/db.js";
 import { runAgent } from "../ai/agent.js";
-
-const MAX_HISTORY = 12;
 const SYSTEM_PROMPT =
   "Bạn là trợ lý mua sắm cho cửa hàng nội thất điện tử. Trả lời ngắn gọn, rõ ràng, ưu tiên tiếng Việt. Nếu chưa chắc, hãy hỏi lại để làm rõ yêu cầu.";
 

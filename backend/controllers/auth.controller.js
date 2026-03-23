@@ -4,6 +4,7 @@ import { prisma } from "../lib/db.js";
 import cloudinary from "../lib/cloudinary.js";
 import nodemailer from "nodemailer";
 import { promisify } from "util";
+import { writeAuditLog } from "./audit.controller.js";
 
 const generateAccessToken = (userId) => {
   const secret =
@@ -166,6 +167,17 @@ export const login = async (req, res) => {
     }
 
     const accessToken = generateAccessToken(user.id.toString());
+
+    // Audit log đăng nhập
+    writeAuditLog({
+      userId: user.id.toString(),
+      action: "LOGIN",
+      resource: "user",
+      resourceId: user.id,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+      metadata: { email },
+    });
 
     res.status(200).json({
       success: true,
@@ -334,6 +346,15 @@ export const changePassword = async (req, res) => {
     await prisma.user.update({
       where: { id: BigInt(userId) },
       data: { password_digest: hashed },
+    });
+
+    writeAuditLog({
+      userId,
+      action: "CHANGE_PASSWORD",
+      resource: "user",
+      resourceId: userId,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
     });
 
     res.json({ success: true, message: "Password changed successfully" });
