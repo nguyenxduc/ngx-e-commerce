@@ -1,45 +1,123 @@
 import { prisma } from "../lib/db.js";
 
-// Gợi ý sản phẩm cho trang chủ.
-// - User mới (chưa có nhiều behavior): trả về best seller / sản phẩm mới nhất.
-// - Về sau có thể mở rộng đọc từ RecommendationLog (precompute offline).
+async function getColdStartProducts(limit) {
+  const half = Math.ceil(limit / 2);
+  const [bestSellers, newest] = await Promise.all([
+    prisma.product.findMany({
+      where: { deleted_at: null },
+      orderBy: [{ sold: "desc" }, { rating: "desc" }],
+      take: half,
+    }),
+    prisma.product.findMany({
+      where: { deleted_at: null },
+      orderBy: { created_at: "desc" },
+      take: Math.floor(limit / 2),
+    }),
+  ]);
+  const map = new Map();
+  [...bestSellers, ...newest].forEach((p) => {
+    if (!map.has(p.id.toString())) map.set(p.id.toString(), p);
+  });
+  return Array.from(map.values()).slice(0, limit);
+}
+
+async function getCfProductsFromBehavior(userId, limit) {
+  const rows = await prisma.userBehavior.findMany({
+    where: {
+      user_id: BigInt(userId),
+      product_id: { not: null },
+      event_type: { in: ["view", "click", "add_to_cart", "purchase"] },
+    },
+    orderBy: { event_time: "desc" },
+    take: 40,
+    select: { product_id: true },
+  });
+
+  const seen = new Set();
+  const seedIds = [];
+  for (const r of rows) {
+    if (!r.product_id) continue;
+    const id = r.product_id.toString();
+    if (!seen.has(id)) {
+      seen.add(id);
+      seedIds.push(r.product_id);
+      if (seedIds.length >= 6) break;
+    }
+  }
+
+  if (seedIds.length === 0) return [];
+
+  const simRows = await prisma.productSimilarity.findMany({
+    where: {
+      product_id: { in: seedIds },
+    },
+    orderBy: { score: "desc" },
+    take: limit * 3,
+  });
+
+  const productIds = [];
+  const seenP = new Set();
+  for (const s of simRows) {
+    const sid = s.similar_product_id.toString();
+    if (seenP.has(sid)) continue;
+    seenP.add(sid);
+    productIds.push(s.similar_product_id);
+    if (productIds.length >= limit) break;
+  }
+
+  if (productIds.length === 0) return [];
+
+  const products = await prisma.product.findMany({
+    where: {
+      id: { in: productIds },
+      deleted_at: null,
+    },
+  });
+
+  const order = new Map(productIds.map((id, i) => [id.toString(), i]));
+  products.sort(
+    (a, b) => (order.get(a.id.toString()) ?? 0) - (order.get(b.id.toString()) ?? 0)
+  );
+  return products.slice(0, limit);
+}
+
+// Gợi ý trang chủ: ưu tiên CF từ hành vi; fallback cold-start.
 export const getHomeRecommendations = async (req, res) => {
   try {
     const userId = req.user?.id;
-
-    // Nếu sau này có pipeline offline, có thể ưu tiên đọc từ recommendation_log trước.
-    // Hiện tại: cold-start logic đơn giản theo góp ý của cô.
     const limit = Number(req.query.limit || 12);
 
-    const [bestSellers, newest] = await Promise.all([
-      prisma.product.findMany({
-        orderBy: [{ sold: "desc" }, { rating: "desc" }],
-        take: Math.ceil(limit / 2),
-      }),
-      prisma.product.findMany({
-        orderBy: { created_at: "desc" },
-        take: Math.floor(limit / 2),
-      }),
-    ]);
+    let products = [];
+    let strategy = "cold_start_best_seller_newest";
 
-    // Gộp và loại trùng id
-    const map = new Map();
-    [...bestSellers, ...newest].forEach((p) => {
-      if (!map.has(p.id.toString())) {
-        map.set(p.id.toString(), p);
+    if (userId) {
+      const cf = await getCfProductsFromBehavior(userId, limit);
+      if (cf.length > 0) {
+        products = cf;
+        strategy = "personalized_cf_behavior";
       }
-    });
+    }
 
-    const products = Array.from(map.values()).slice(0, limit);
+    if (products.length < limit) {
+      const cold = await getColdStartProducts(limit);
+      const map = new Map();
+      products.forEach((p) => map.set(p.id.toString(), p));
+      cold.forEach((p) => {
+        if (!map.has(p.id.toString())) map.set(p.id.toString(), p);
+      });
+      products = Array.from(map.values()).slice(0, limit);
+      if (userId && strategy === "personalized_cf_behavior") {
+        strategy = "hybrid_cf_cold_start";
+      }
+    }
 
-    // Ghi log chiến lược đang dùng (để sau này làm offline CF dễ hơn)
     await prisma.recommendationLog.create({
       data: {
         user_id: userId ? BigInt(userId) : null,
         session_id: req.headers["x-session-id"]
           ? String(req.headers["x-session-id"])
           : null,
-        strategy: "cold_start_best_seller_newest",
+        strategy,
         product_ids: products.map((p) => BigInt(p.id)),
       },
     });
@@ -48,7 +126,7 @@ export const getHomeRecommendations = async (req, res) => {
       success: true,
       data: {
         products,
-        strategy: "cold_start_best_seller_newest",
+        strategy,
       },
     });
   } catch (error) {
@@ -59,4 +137,3 @@ export const getHomeRecommendations = async (req, res) => {
     });
   }
 };
-

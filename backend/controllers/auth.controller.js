@@ -249,6 +249,8 @@ export const getProfile = async (req, res) => {
         phone: user.phone,
         address: user.address,
         avatar: user.avatar,
+        loyalty_points: user.loyalty_points ?? 0,
+        segment: user.segment ?? null,
         createdAt: user.created_at,
         updatedAt: user.updated_at,
       },

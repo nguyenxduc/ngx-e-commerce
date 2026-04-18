@@ -1,11 +1,11 @@
 import express from "express";
-import { protectRoute } from "../middleware/auth.middleware.js";
+import { optionalAuth } from "../middleware/optionalAuth.middleware.js";
 import { getHomeRecommendations } from "../controllers/recommendation.controller.js";
 
 const router = express.Router();
 
-// Gợi ý cho trang chủ – cần bảo vệ nhẹ để có userId khi có (nhưng vẫn có thể dùng sessionId cho khách)
-router.get("/home", protectRoute, getHomeRecommendations);
+// Có userId khi đã đăng nhập; khách vẫn dùng cold-start + session header
+router.get("/home", optionalAuth, getHomeRecommendations);
 
 export default router;
 

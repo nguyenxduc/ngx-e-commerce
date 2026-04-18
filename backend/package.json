@@ -9,7 +9,11 @@
     "dev": "nodemon server.js",
     "seed": "node seed/index.js",
     "embed:products": "node scripts/embed-products.js",
-    "setup:similarity": "node scripts/setup_similarity.js"
+    "setup:similarity": "node scripts/setup_similarity.js",
+    "job:cf-similarity": "node jobs/computeProductSimilarity.js",
+    "job:prune-user-behavior": "node jobs/pruneUserBehavior.js",
+    "job:rollup-user-behavior-daily": "node jobs/rollupUserBehaviorDaily.js",
+    "job:daily-recommendation": "node jobs/runDailyRecommendationJobs.js"
   },
   "dependencies": {
     "@ai-sdk/groq": "^2.0.32",

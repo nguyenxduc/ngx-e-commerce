@@ -528,7 +528,26 @@ model UserBehavior {
   @@index([user_id, event_time])
   @@index([product_id, event_time])
   @@index([event_type, event_time])
+  @@index([event_time])
   @@map("user_behavior")
+}
+
+// Gom nhóm hành vi theo ngày (visitor + sản phẩm + loại sự kiện) — giữ lâu dài, bảng nhỏ hơn raw.
+// visitor_key: "user:<id>" hoặc "sess:<session_id|unknown>"
+model UserBehaviorDaily {
+  id          BigInt   @id @default(autoincrement())
+  visitor_key String
+  product_id  BigInt   @default(0)
+  event_type  String
+  day         DateTime @db.Date
+  event_count Int      @default(0)
+  updated_at  DateTime @default(now()) @updatedAt
+
+  @@unique([visitor_key, product_id, event_type, day])
+  @@index([day])
+  @@index([visitor_key, day])
+  @@index([product_id, day])
+  @@map("user_behavior_daily")
 }
 
 // Bảng lưu điểm tương đồng giữa các sản phẩm, được tính offline.

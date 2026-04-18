@@ -9,6 +9,7 @@ import {
 import {
   createAiFeedback,
   getAiFeedbackStats,
+  listAiFeedbackAdmin,
 } from "../controllers/aiFeedback.controller.js";
 import { protectRoute } from "../middleware/auth.middleware.js";
 
@@ -16,14 +17,14 @@ const router = express.Router();
 
 router.get("/", protectRoute, listAiChats);
 router.post("/", protectRoute, createAiChat);
+// Phải khai báo trước /:chatId để không bị ăn nhầm
+router.get("/feedback/stats", protectRoute, getAiFeedbackStats);
+router.get("/feedback/list", protectRoute, listAiFeedbackAdmin);
+
 router.get("/:chatId/messages", protectRoute, getAiMessages);
 router.post("/:chatId/messages", protectRoute, sendAiChatMessage);
 router.delete("/:chatId", protectRoute, deleteAiChat);
-
-// Feedback cho câu trả lời của bot
 router.post("/:chatId/feedback", protectRoute, createAiFeedback);
-// Admin có thể xem thống kê tổng quan
-router.get("/feedback/stats", protectRoute, getAiFeedbackStats);
 
 export default router;
 
